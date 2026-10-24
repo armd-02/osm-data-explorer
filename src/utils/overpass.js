@@ -135,7 +135,7 @@ function escapeStr(str) {
  */
 export async function executeOverpassQuery(query, options = {}) {
   const {
-    endpoint = 'public',
+    endpoint = APP_CONFIG.overpassEndpoint,
     timeout = APP_CONFIG.timeoutMs,
     signal: externalSignal
   } = options
