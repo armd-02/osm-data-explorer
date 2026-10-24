@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useApp } from '../context/AppContext'
+import { setMapInstance } from '../hooks/useMapRef'
+import MapToolbar from './MapToolbar'
 
 // Default center: Osaka, Japan
 const DEFAULT_CENTER = [34.6937, 135.5023]
@@ -32,6 +34,7 @@ function MapView() {
     }).addTo(map)
 
     leafletRef.current = map
+    setMapInstance(map)
 
     // Update BBOX when map moves
     const updateBbox = () => {
@@ -53,6 +56,7 @@ function MapView() {
     return () => {
       map.remove()
       leafletRef.current = null
+      setMapInstance(null)
     }
   }, [dispatch])
 
@@ -127,8 +131,19 @@ function MapView() {
     }
   }, [activeResultId, results])
 
+  const handleDrawComplete = useCallback((bbox) => {
+    dispatch({ type: 'SET_BBOX', payload: bbox })
+  }, [dispatch])
+
   return (
-    <div ref={mapRef} className="absolute inset-0" />
+    <div className="absolute inset-0">
+      <div ref={mapRef} className="w-full h-full" />
+      <MapToolbar
+        mapRef={mapRef}
+        bboxLayerRef={bboxLayerRef}
+        onDrawComplete={handleDrawComplete}
+      />
+    </div>
   )
 }
 

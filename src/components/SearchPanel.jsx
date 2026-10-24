@@ -1,13 +1,19 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { useSearch } from '../hooks/useSearch'
+import { checkBboxSize } from '../utils/geo'
 import SimpleSearch from './SimpleSearch'
 import AdvancedSearch from './AdvancedSearch'
 
 function SearchPanel() {
   const { state, dispatch } = useApp()
   const { search } = useSearch()
-  const { searchMode } = state
+  const { searchMode, bbox } = state
+
+  const bboxWarning = useMemo(() => {
+    if (!bbox) return null
+    return checkBboxSize(bbox).tooLarge ? checkBboxSize(bbox) : null
+  }, [bbox])
 
   return (
     <div className="p-4 space-y-4">
@@ -42,15 +48,22 @@ function SearchPanel() {
       <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
         <h3 className="text-xs font-medium text-slate-500 mb-1">検索範囲</h3>
         {state.bbox ? (
-          <p className="text-xs text-slate-600 font-mono">
-            北: {state.bbox.north.toFixed(6)}°
-            <br />
-            南: {state.bbox.south.toFixed(6)}°
-            <br />
-            東: {state.bbox.east.toFixed(6)}°
-            <br />
-            西: {state.bbox.west.toFixed(6)}°
-          </p>
+          <>
+            <p className="text-xs text-slate-600 font-mono">
+              北: {state.bbox.north.toFixed(6)}°
+              <br />
+              南: {state.bbox.south.toFixed(6)}°
+              <br />
+              東: {state.bbox.east.toFixed(6)}°
+              <br />
+              西: {state.bbox.west.toFixed(6)}°
+            </p>
+            {bboxWarning && (
+              <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
+                ⚠️ {bboxWarning.message}
+              </p>
+            )}
+          </>
         ) : (
           <p className="text-xs text-slate-400">
             地図の表示範囲が検索範囲になります。地図を移動・ズームして範囲を設定してください。

@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useApp } from '../context/AppContext'
 import { buildSimpleQuery, buildAdvancedQuery, executeOverpassQuery, filterByKeyword } from '../utils/overpass'
+import { checkBboxSize } from '../utils/geo'
 import { getCategoryById } from '../data/categories'
 
 /**
@@ -13,6 +14,14 @@ export function useSearch() {
     if (!state.bbox) {
       dispatch({ type: 'SET_STATUS', payload: 'error' })
       dispatch({ type: 'SET_ERROR', payload: '検索範囲が設定されていません。地図を移動して範囲を指定してください。' })
+      return
+    }
+
+    // 範囲が大きすぎる場合のチェック
+    const sizeCheck = checkBboxSize(state.bbox)
+    if (sizeCheck.areaKm2 > 40000) {
+      dispatch({ type: 'SET_STATUS', payload: 'error' })
+      dispatch({ type: 'SET_ERROR', payload: sizeCheck.message })
       return
     }
 
