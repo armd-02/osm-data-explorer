@@ -9,11 +9,12 @@ import ExportBar from './components/ExportBar'
 import ShareButton from './components/ShareButton'
 import EditPanel from './components/EditPanel'
 import BatchMatch from './components/BatchMatch'
+import AboutPanel from './components/AboutPanel'
 import StatusBanner from './components/StatusBanner'
 import { decodeURLToState } from './utils/urlState'
 
 function App() {
-  const [rightTab, setRightTab] = useState('results') // 'results' | 'stats' | 'batch'
+  const [rightTab, setRightTab] = useState('results') // 'results' | 'stats' | 'batch' | 'about'
   const [state, dispatch] = React.useReducer(
     (state, action) => {
       switch (action.type) {
@@ -136,12 +137,21 @@ function App() {
                 >
                   一括照合
                 </button>
+                <button
+                  onClick={() => setRightTab('about')}
+                  className={`px-3 py-1 text-xs rounded-t transition-colors ${
+                    rightTab === 'about' ? 'text-primary-700 font-medium border-b-2 border-primary-500' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  について
+                </button>
               </div>
               {/* Content */}
               <div className="flex-1 overflow-y-auto min-h-0">
                 {rightTab === 'results' && <ResultsPanel />}
                 {rightTab === 'stats' && <StatisticsPanel />}
                 {rightTab === 'batch' && <BatchMatch />}
+                {rightTab === 'about' && <AboutPanel />}
               </div>
               {/* Export bar */}
               <ExportBar />
