@@ -18,13 +18,13 @@ export const OVERPASS_ENDPOINTS = {
   },
   custom: {
     id: 'custom',
-    label: 'カスタムインスタンス',
-    url: '',
+    label: 'Overpass API (armd-01)',
+    url: 'https://armd-01.sakura.ne.jp/api/interpreter',
     timeout: 30000
   }
 }
 
-export const DEFAULT_ENDPOINT = 'public'
+export const DEFAULT_ENDPOINT = 'custom'
 
 export const APP_CONFIG = {
   // デフォルトのOverpassエンドポイント
