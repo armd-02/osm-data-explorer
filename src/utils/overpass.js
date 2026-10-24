@@ -2,7 +2,7 @@
  * Overpass API クエリ生成・実行・キャッシュ
  * UIからクエリ生成を分離したデータ取得層
  */
-import { getOverpassUrl, APP_CONFIG } from '../config'
+import { getOverpassUrl, getEndpointLabel, APP_CONFIG } from '../config'
 import { getCategoryById, categoryToQueryFilter } from '../data/categories'
 
 // ============================================================
