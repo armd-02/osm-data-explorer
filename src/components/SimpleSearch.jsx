@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { CATEGORIES } from '../data/categories'
+import { CATEGORIES, getCategoryById, categoryToReadableTags } from '../data/categories'
 import { geocode } from '../utils/geo'
 import { useMapRef } from '../hooks/useMapRef'
 
@@ -44,6 +44,9 @@ function SimpleSearch() {
     }
   }, [location, geocoding, mapRef, dispatch])
 
+  // 選択中カテゴリのタグ情報
+  const selectedCat = useMemo(() => (category ? getCategoryById(category) : null), [category])
+
   return (
     <div className="space-y-3">
       {/* Category selection */}
@@ -61,6 +64,19 @@ function SimpleSearch() {
             <option key={cat.id} value={cat.id}>{cat.label}</option>
           ))}
         </select>
+        {selectedCat && (
+          <div className="mt-1.5 bg-slate-50 rounded px-2 py-1.5">
+            <p className="text-[11px] text-slate-500">
+              条件: <code className="text-[11px] bg-white px-1 rounded">{categoryToReadableTags(selectedCat)}</code>
+            </p>
+            {selectedCat.description && (
+              <p className="text-[11px] text-slate-400 mt-0.5">{selectedCat.description}</p>
+            )}
+          </div>
+        )}
+        <p className="mt-1 text-[11px] text-slate-400">
+          ※ 初期カテゴリは代表的な施設のみです。詳細検索で任意のタグを指定できます。
+        </p>
       </div>
 
       {/* Keyword search */}

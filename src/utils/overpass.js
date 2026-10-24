@@ -3,7 +3,7 @@
  * UIからクエリ生成を分離したデータ取得層
  */
 import { getOverpassUrl, APP_CONFIG } from '../config'
-import { getCategoryById } from '../data/categories'
+import { getCategoryById, categoryToQueryFilter } from '../data/categories'
 
 // ============================================================
 // メモリキャッシュ
@@ -61,18 +61,12 @@ export class OverpassError extends Error {
 // ============================================================
 
 /**
- * タグ条件をOverpassクエリ文字列に変換（エスケープ付き）
+ * カテゴリのタグ条件をOverpassクエリ文字列に変換
  */
-function buildTagFilter(tags) {
-  if (!tags || Object.keys(tags).length === 0) return ''
-  return Object.entries(tags)
-    .map(([key, value]) => {
-      const safeKey = escapeStr(key)
-      if (value === '*') return `${safeKey}=*`
-      if (value.startsWith('!')) return `!${safeKey}`
-      return `${safeKey}=${escapeStr(value)}`
-    })
-    .join(' ')
+function buildCategoryFilter(category) {
+  if (!category) return ''
+  const cat = getCategoryById(category)
+  return categoryToQueryFilter(cat)
 }
 
 /**
@@ -82,13 +76,7 @@ export function buildSimpleQuery(bbox, category, keyword) {
   const { south, west, north, east } = bbox
   const bboxStr = `${south},${west},${north},${east}`
 
-  let tagFilter = ''
-  if (category) {
-    const cat = getCategoryById(category)
-    if (cat) {
-      tagFilter = buildTagFilter(cat.tags)
-    }
-  }
+  const tagFilter = buildCategoryFilter(category)
 
   let query
   if (tagFilter) {
@@ -306,27 +294,148 @@ export function parseOverpassResponse(data) {
 }
 
 /**
- * キーワードで結果をフィルタ（日本語対応: 全角/半角正規化）
+ * 名前キーワードで結果をフィルタ
+ * 複数名称タグ（name, name:ja, official_name, alt_name）を検索
+ * 表記揺れ（全角/半角、大文字小文字、空白、Unicode）を吸収
+ * 
+ * @returns {Array} マッチした結果配列（matchTypeフィールド付き）
  */
 export function filterByKeyword(results, keyword) {
   if (!keyword || keyword.trim() === '') return results
-  const kw = normalizeKeyword(keyword)
-  return results.filter((r) => {
-    const name = normalizeKeyword(r.name || '')
-    return name.includes(kw)
+
+  const NAME_TAGS = ['name', 'name:ja', 'official_name', 'alt_name', 'name:en']
+
+  const matched = []
+  for (const result of results) {
+    let matchType = null
+    let matchedTag = null
+
+    for (const tag of NAME_TAGS) {
+      const value = result.tags?.[tag]
+      if (!value) continue
+
+      const match = textsMatch(null, value, keyword)
+      if (match) {
+        if (match === 'exact') {
+          matchType = 'exact'
+          matchedTag = tag
+          break
+        }
+        if (match === 'partial' && matchType !== 'exact') {
+          matchType = 'partial'
+          matchedTag = tag
+        }
+      }
+    }
+
+    if (matchType) {
+      matched.push({ ...result, matchType, matchedTag })
+    }
+  }
+
+  // 完全一致を優先表示
+  matched.sort((a, b) => {
+    if (a.matchType === 'exact' && b.matchType !== 'exact') return -1
+    if (a.matchType !== 'exact' && b.matchType === 'exact') return 1
+    return 0
   })
+
+  return matched
 }
 
 /**
- * 日本語キーワード正規化
- * 全角→半角、大文字/小文字統一
+ * テキスト正規化（日本語表記揺れ対応）
+ * - Unicode NFKC正規化（全角→半角、合成文字の分解）
+ * - 大文字/小文字統一
+ * - 全角スペース→半角
+ * - 記号・空白の除去
+ * - かな→ローマ字の簡易変換（両方のパスで比較）
+ * 
+ * @returns {string} 正規化後のテキスト
  */
-function normalizeKeyword(str) {
-  return str
-    .toLowerCase()
-    .replace(/[\uFF10-\uFF19]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-    .replace(/[\uFF21-\uFF3A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-    .replace(/[\uFF41-\uFF5A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-    .replace(/\uFF5C/g, '|')
-    .replace(/\u3000/g, ' ')
+export function normalizeText(str) {
+  if (!str) return ''
+  let text = String(str)
+
+  // Unicode NFKC正規化
+  text = text.normalize('NFKC')
+
+  // 大文字/小文字統一
+  text = text.toLowerCase()
+
+  // 全角スペース→半角
+  text = text.replace(/\u3000/g, ' ')
+
+  // 全角英数字→半角
+  text = text.replace(/[\uFF10-\uFF19]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+  text = text.replace(/[\uFF21-\uFF3A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+  text = text.replace(/[\uFF41-\uFF5A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+
+  // 記号・空白を除去
+  text = text.replace(/[\s\-_.~\^\/\\|@#$%&*+<>[\]{}()]/g, '')
+
+  return text.trim()
+}
+
+/**
+ * かな→ローマ字変換（簡易）
+ * 表記揺れ吸収のため、かな表記とローマ字表記の両方でマッチング
+ */
+const KANA_TO_ROMAJI = {
+  'あ': 'a', 'い': 'i', 'う': 'u', 'え': 'e', 'お': 'o',
+  'か': 'ka', 'き': 'ki', 'く': 'ku', 'け': 'ke', 'こ': 'ko',
+  'さ': 'sa', 'し': 'shi', 'す': 'su', 'せ': 'se', 'そ': 'so',
+  'た': 'ta', 'ち': 'chi', 'つ': 'tsu', 'て': 'te', 'と': 'to',
+  'な': 'na', 'に': 'ni', 'ぬ': 'nu', 'ね': 'ne', 'の': 'no',
+  'は': 'ha', 'ひ': 'hi', 'ふ': 'fu', 'へ': 'he', 'ほ': 'ho',
+  'ま': 'ma', 'み': 'mi', 'む': 'mu', 'め': 'me', 'も': 'mo',
+  'や': 'ya', 'ゆ': 'yu', 'よ': 'yo',
+  'ら': 'ra', 'り': 'ri', 'る': 'ru', 'れ': 're', 'ろ': 'ro',
+  'わ': 'wa', 'を': 'wo', 'ん': 'n',
+  'ア': 'a', 'イ': 'i', 'ウ': 'u', 'エ': 'e', 'オ': 'o',
+  'カ': 'ka', 'キ': 'ki', 'ク': 'ku', 'ケ': 'ke', 'コ': 'ko',
+  'サ': 'sa', 'シ': 'shi', 'ス': 'su', 'セ': 'se', 'ソ': 'so',
+  'タ': 'ta', 'チ': 'chi', 'ツ': 'tsu', 'テ': 'te', 'ト': 'to',
+  'ナ': 'na', 'ニ': 'ni', 'ヌ': 'nu', 'ネ': 'ne', 'ノ': 'no',
+  'ハ': 'ha', 'ヒ': 'hi', 'フ': 'fu', 'ヘ': 'he', 'ホ': 'ho',
+  'マ': 'ma', 'ミ': 'mi', 'ム': 'mu', 'メ': 'me', 'モ': 'mo',
+  'ヤ': 'ya', 'ユ': 'yu', 'ヨ': 'yo',
+  'ラ': 'ra', 'リ': 'ri', 'ル': 'ru', 'レ': 're', 'ロ': 'ro',
+  'ワ': 'wa', 'ヲ': 'wo', 'ン': 'n'
+}
+
+/**
+ * かな→ローマ字に変換したテキストを返す
+ */
+export function romanizeText(str) {
+  if (!str) return ''
+  let result = ''
+  for (const char of str) {
+    result += KANA_TO_ROMAJI[char] || char
+  }
+  return result.replace(/[\s\-_.~\^\/\\|@#$%&*+<>[\]{}()]/g, '').trim()
+}
+
+/**
+ * 2つの正規化テキストがマッチするか判定
+ * 直接比較 + ローマ字変換比較の両方を行う
+ */
+export function textsMatch(textA, textB, keyword) {
+  const normA = normalizeText(textA)
+  const normB = normalizeText(textB)
+  const normKw = normalizeText(keyword)
+
+  // 直接比較
+  if (normB === normKw) return 'exact'
+  if (normB.includes(normKw)) return 'partial'
+
+  // ローマ字変換比較（かな→ローマ字）
+  const romB = romanizeText(textB)
+  const romKw = romanizeText(keyword)
+  if (romB && romKw) {
+    if (romB === romKw) return 'exact'
+    if (romB.includes(romKw)) return 'partial'
+  }
+
+  return null
 }

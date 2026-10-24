@@ -94,8 +94,15 @@ function ResultsPanel() {
                 <span className="text-sm text-slate-800 truncate flex-1">
                   {result.name || <span className="text-slate-400">（名前のない要素）</span>}
                 </span>
+                {result.matchType && (
+                  <span className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
+                    result.matchType === 'exact' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
+                  }`} title={result.matchType === 'exact' ? '完全一致' : '部分一致'}>
+                    {result.matchType === 'exact' ? '完全' : '部分'}
+                  </span>
+                )}
                 <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                  ID: {result.id}
+                  {result.id}
                 </span>
               </div>
               {/* タグサマリー */}
