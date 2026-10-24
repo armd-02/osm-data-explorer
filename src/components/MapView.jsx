@@ -106,12 +106,20 @@ function MapView() {
             })
           }).addTo(map)
 
-          const name = result.name || result.id
+          const name = result.name || '（名前のない要素）'
           const type = result.type || 'node'
+          const osmUrl = `https://www.openstreetmap.org/${type}/${result.id}`
+          const keyTags = Object.entries(result.tags || {})
+            .filter(([k]) => k !== 'name' && k !== 'name:ja')
+            .slice(0, 3)
+            .map(([k, v]) => `<div style="color:#555;font-size:11px">${k}: ${v}</div>`)
+            .join('')
           marker.bindPopup(`
-            <div style="font-size: 12px; min-width: 150px;">
+            <div style="font-size: 12px; min-width: 160px; max-width: 220px;">
               <strong>${name}</strong><br/>
-              <span>Type: ${type} / ID: ${result.id}</span>
+              <span style="color:#666">${type} / ID: ${result.id}</span><br/>
+              <a href="${osmUrl}" target="_blank" rel="noopener" style="color:#2563eb;font-size:11px">🔗 OSMで開く</a>
+              ${keyTags}
             </div>
           `)
 

@@ -101,9 +101,23 @@ function ResultsPanel() {
                     {result.matchType === 'exact' ? '完全' : '部分'}
                   </span>
                 )}
-                <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                <a
+                  href={`https://www.openstreetmap.org/${result.type}/${result.id}`}
+                  target="_blank"
+                  rel="noopener"
+                  className="text-[10px] text-primary-600 hover:text-primary-800 shrink-0"
+                  title="OpenStreetMapで開く"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  🔗
+                </a>
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(`${result.type}/${result.id}`) }}
+                  className="text-[10px] text-slate-400 hover:text-slate-600 shrink-0"
+                  title="OSM IDをコピー"
+                >
                   {result.id}
-                </span>
+                </button>
               </div>
               {/* タグサマリー */}
               {result.tags && Object.keys(result.tags).length > 0 && (

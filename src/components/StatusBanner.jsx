@@ -47,7 +47,10 @@ function StatusBanner() {
       return (
         <div className="bg-slate-50 border-b border-slate-200 px-4 py-2">
           <span className="text-sm text-slate-600">
-            該当する結果がありません。検索条件や範囲を変更して試してください。
+            該当する結果がありません。
+          </span>
+          <span className="text-xs text-slate-400 ml-2">
+            （OSMに未登録である可能性、または表記の違いで一致しない可能性があります）
           </span>
         </div>
       )
