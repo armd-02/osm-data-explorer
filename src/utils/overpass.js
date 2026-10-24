@@ -11,9 +11,10 @@ import { getCategoryById, categoryToQueryFilter } from '../data/categories'
 const cache = new Map()
 let cacheOrder = [] // LRU用
 
-function cacheKey(query) {
-  // bbox座標はquery文字列内に埋め込まれているため、query自体をキーに使用
-  return query
+function cacheKey(query, endpoint) {
+  // bbox座標はquery文字列内に埋め込まれているため、query文字列自体をキーにする。
+  // 別エンドポイント（インスタンス）で結果を混同しないよう、エンドポイントIDもキーに含める。
+  return `${endpoint}::${query}`
 }
 
 function getFromCache(key) {
@@ -141,9 +142,9 @@ export async function executeOverpassQuery(query, options = {}) {
   } = options
 
   const url = getOverpassUrl(endpoint)
-  const cKey = cacheKey(query)
+  const cKey = cacheKey(query, endpoint)
 
-  // キャッシュチェック（bboxはqueryに含まれるので簡易キー）
+  // キャッシュチェック（キーは query＋エンドポイントID）
   const cached = getFromCache(cKey)
   if (cached) {
     return {
