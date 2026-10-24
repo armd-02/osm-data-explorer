@@ -22,10 +22,12 @@ function App() {
           return { ...state, status: action.payload }
         case 'SET_RESULTS':
           return { ...state, results: action.payload }
+        case 'SET_FETCH_META':
+          return { ...state, fetchMeta: action.payload }
         case 'SET_ERROR':
-          return { ...state, error: action.payload }
+          return { ...state, error: action.payload, errorType: action.errorType || null, errorSuggestion: action.errorSuggestion || null }
         case 'CLEAR_RESULTS':
-          return { ...state, results: [], error: null, status: 'idle' }
+          return { ...state, results: [], error: null, errorType: null, errorSuggestion: null, status: 'idle', fetchMeta: null }
         case 'SET_ACTIVE_RESULT':
           return { ...state, activeResultId: action.payload }
         default:
@@ -48,6 +50,9 @@ function App() {
       status: 'idle', // 'idle' | 'loading' | 'success' | 'error'
       results: [],
       error: null,
+      errorType: null,
+      errorSuggestion: null,
+      fetchMeta: null, // { fetchedAt, endpoint, elementCount, cached }
       activeResultId: null
     }
   )

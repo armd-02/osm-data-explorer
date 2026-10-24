@@ -7,7 +7,7 @@ import AdvancedSearch from './AdvancedSearch'
 
 function SearchPanel() {
   const { state, dispatch } = useApp()
-  const { search } = useSearch()
+  const { search, cancel } = useSearch()
   const { searchMode, bbox } = state
 
   const bboxWarning = useMemo(() => {
@@ -72,13 +72,23 @@ function SearchPanel() {
       </div>
 
       {/* Search button */}
-      <button
-        onClick={search}
-        disabled={state.status === 'loading'}
-        className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-      >
-        {state.status === 'loading' ? '検索中...' : '検索する'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={search}
+          disabled={state.status === 'loading'}
+          className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          {state.status === 'loading' ? '検索中...' : '検索する'}
+        </button>
+        {state.status === 'loading' && (
+          <button
+            onClick={cancel}
+            className="px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            中止
+          </button>
+        )}
+      </div>
     </div>
   )
 }

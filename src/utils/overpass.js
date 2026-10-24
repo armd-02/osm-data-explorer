@@ -1,37 +1,102 @@
 /**
- * Overpass API クエリ生成と実行
+ * Overpass API クエリ生成・実行・キャッシュ
+ * UIからクエリ生成を分離したデータ取得層
  */
+import { getOverpassUrl, APP_CONFIG } from '../config'
+import { getCategoryById } from '../data/categories'
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
-const TIMEOUT_MS = 30000
+// ============================================================
+// メモリキャッシュ
+// ============================================================
+const cache = new Map()
+let cacheOrder = [] // LRU用
+
+function cacheKey(query, bbox) {
+  return `${bbox.south.toFixed(6)},${bbox.west.toFixed(6)},${bbox.north.toFixed(6)},${bbox.east.toFixed(6)}|${query}`
+}
+
+function getFromCache(key) {
+  if (!APP_CONFIG.cacheEnabled) return null
+  if (!cache.has(key)) return null
+  const entry = cache.get(key)
+  // キャッシュをLRU順序の先頭に移動
+  cacheOrder = cacheOrder.filter((k) => k !== key)
+  cacheOrder.unshift(key)
+  return entry
+}
+
+function setToCache(key, data, meta) {
+  if (!APP_CONFIG.cacheEnabled) return
+  cache.set(key, { data, meta })
+  cacheOrder.unshift(key)
+  // 最大件数を超えたら古いものを削除
+  while (cacheOrder.length > APP_CONFIG.cacheMaxEntries) {
+    const oldKey = cacheOrder.pop()
+    cache.delete(oldKey)
+  }
+}
+
+export function clearCache() {
+  cache.clear()
+  cacheOrder = []
+}
+
+export function getCacheStats() {
+  return { entries: cache.size, maxEntries: APP_CONFIG.cacheMaxEntries }
+}
+
+// ============================================================
+// エラークラス
+// ============================================================
+export class OverpassError extends Error {
+  constructor(message, type, suggestion) {
+    super(message)
+    this.type = type // 'timeout' | 'rate_limit' | 'server_error' | 'network' | 'empty' | 'invalid_query'
+    this.suggestion = suggestion
+  }
+}
+
+// ============================================================
+// クエリ生成
+// ============================================================
+
+/**
+ * タグ条件をOverpassクエリ文字列に変換（エスケープ付き）
+ */
+function buildTagFilter(tags) {
+  if (!tags || Object.keys(tags).length === 0) return ''
+  return Object.entries(tags)
+    .map(([key, value]) => {
+      const safeKey = escapeStr(key)
+      if (value === '*') return `${safeKey}=*`
+      if (value.startsWith('!')) return `!${safeKey}`
+      return `${safeKey}=${escapeStr(value)}`
+    })
+    .join(' ')
+}
 
 /**
  * かんたん検索用クエリを生成
- * @param {object} bbox - { south, west, north, east }
- * @param {object|null} categoryTags - カテゴリから解決したタグオブジェクト (例: {amenity: 'cafe'})
- * @param {string} keyword - キーワード（後フィルタ用）
  */
-export function buildSimpleQuery(bbox, categoryTags, keyword) {
+export function buildSimpleQuery(bbox, category, keyword) {
   const { south, west, north, east } = bbox
+  const bboxStr = `${south},${west},${north},${east}`
 
-  // Build tag filter from resolved category tags
   let tagFilter = ''
-  if (categoryTags) {
-    tagFilter = Object.entries(categoryTags)
-      .map(([k, v]) => escapeOverpassString(`${k}=${v}`))
-      .join(' ')
+  if (category) {
+    const cat = getCategoryById(category)
+    if (cat) {
+      tagFilter = buildTagFilter(cat.tags)
+    }
   }
 
-  const bboxStr = `${south},${west},${north},${east}`
-  const query = `
-[out:json][timeout:25];
-(
-  node[${tagFilter}](${bboxStr});
-  way[${tagFilter}](${bboxStr});
-  relation[${tagFilter}](${bboxStr});
-);
-out body center;
-`
+  let query
+  if (tagFilter) {
+    query = `[out:json][timeout:25];(\n  node[${tagFilter}](${bboxStr});\n  way[${tagFilter}](${bboxStr});\n  relation[${tagFilter}](${bboxStr});\n);\nout body center;\n`
+  } else {
+    // カテゴリなし: 全要素
+    query = `[out:json][timeout:25];(\n  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});\n);\nout body center;\n`
+  }
 
   return { query, keyword }
 }
@@ -41,128 +106,227 @@ out body center;
  */
 export function buildAdvancedQuery(bbox, tags, keyword, useAnd) {
   const { south, west, north, east } = bbox
-  const conditions = tags.map((tag) => {
-    if (tag.mode === 'equals') {
-      return escapeOverpassString(`${tag.key}=${tag.value}`)
-    } else if (tag.mode === 'exists') {
-      return escapeOverpassString(`${tag.key}=*`)
-    } else if (tag.mode === 'not_exists') {
-      return escapeOverpassString(`!${tag.key}`)
-    }
-    return ''
-  }).filter(Boolean)
-
-  const joiner = useAnd ? ' ' : ' '  // In Overpass, multiple tags in [] are AND by default
-  const tagFilter = conditions.join(' ')
   const bboxStr = `${south},${west},${north},${east}`
 
-  const query = `
-[out:json][timeout:25];
-(
-  node[${tagFilter}](${bboxStr});
-  way[${tagFilter}](${bboxStr});
-  relation[${tagFilter}](${bboxStr});
-);
-out body center;
-`
+  const conditions = tags
+    .map((tag) => {
+      if (!tag.key) return null
+      const safeKey = escapeStr(tag.key)
+      if (tag.mode === 'equals') return `${safeKey}=${escapeStr(tag.value || '')}`
+      if (tag.mode === 'exists') return `${safeKey}=*`
+      if (tag.mode === 'not_exists') return `!${safeKey}`
+      return null
+    })
+    .filter(Boolean)
+
+  const tagFilter = conditions.join(' ')
+  const filter = tagFilter ? `[${tagFilter}]` : ''
+
+  const query = `[out:json][timeout:25];(\n  node${filter}(${bboxStr});\n  way${filter}(${bboxStr});\n  relation${filter}(${bboxStr});\n);\nout body center;\n`
 
   return { query, keyword }
 }
 
 /**
- * Overpassクエリ文字列のエスケープ
+ * 文字列エスケープ（Overpassクエリ内）
  */
-function escapeOverpassString(str) {
-  return str.replace(/['\\]/g, '\\$&')
+function escapeStr(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')
 }
+
+// ============================================================
+// Overpass API 実行
+// ============================================================
 
 /**
  * Overpass API にクエリを実行
+ * @param {string} query - Overpass QLクエリ
+ * @param {object} options - { endpoint, timeout, signal }
+ * @returns {Promise<{results: Array, meta: object}>}
  */
-export async function executeOverpassQuery(query) {
+export async function executeOverpassQuery(query, options = {}) {
+  const {
+    endpoint = 'public',
+    timeout = APP_CONFIG.timeoutMs,
+    signal: externalSignal
+  } = options
+
+  const url = getOverpassUrl(endpoint)
+  const cKey = cacheKey(query, null)
+
+  // キャッシュチェック（bboxはqueryに含まれるので簡易キー）
+  const cached = getFromCache(cKey)
+  if (cached) {
+    return {
+      results: cached.data,
+      meta: { ...cached.meta, cached: true }
+    }
+  }
+
+  // キャンセルサポート
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  // 外部シグナル連携
+  if (externalSignal) {
+    externalSignal.addEventListener('abort', () => controller.abort())
+  }
 
   try {
-    const response = await fetch(OVERPASS_URL, {
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `data=${encodeURIComponent(query)}`,
       signal: controller.signal
     })
 
+    // 429: レート制限 → 再試行
     if (response.status === 429) {
-      throw new Error('Overpass APIのレート制限に達しました。1〜2分おいて再試行してください。')
+      const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10)
+      throw new OverpassError(
+        `Overpass APIのレート制限に達しました（${retryAfter}秒待ってから再試行）`,
+        'rate_limit',
+        `${retryAfter}秒待ってから再実行してください。`
+      )
     }
+
+    // 5xx: サーバーエラー → 再試行提案
     if (response.status >= 500) {
-      throw new Error('Overpass APIに問題があります。時間をおいて再試行してください。')
+      throw new OverpassError(
+        `Overpass APIに問題があります（${response.status}）`,
+        'server_error',
+        '数分待ってから再試行してください。または別インスタンスに切り替えてください。'
+      )
     }
+
     if (!response.ok) {
-      throw new Error(`Overpass APIエラー (${response.status})`)
+      throw new OverpassError(
+        `Overpass APIエラー（${response.status}）`,
+        'server_error',
+        'クエリ内容を確認して再試行してください。'
+      )
     }
 
     const data = await response.json()
-    return parseOverpassResponse(data)
+
+    // Overpassの内部エラーチェック
+    if (data.remark && /error/i.test(data.remark)) {
+      throw new OverpassError(
+        `クエリエラー: ${data.remark}`,
+        'invalid_query',
+        '検索条件を確認して再試行してください。'
+      )
+    }
+
+    const results = parseOverpassResponse(data)
+    const meta = {
+      fetchedAt: new Date().toISOString(),
+      endpoint: getEndpointLabel(endpoint),
+      elementCount: data.elements ? data.elements.length : 0,
+      cached: false
+    }
+
+    // キャッシュに格納
+    setToCache(cKey, results, meta)
+
+    // 結果が空の場合
+    if (results.length === 0) {
+      return { results: [], meta: { ...meta, empty: true } }
+    }
+
+    return { results, meta }
   } catch (error) {
     if (error.name === 'AbortError') {
-      throw new Error('タイムアウトしました。検索範囲を狭めて再試行してください。')
+      // タイムアウト or 手動キャンセル
+      const isTimeout = !externalSignal || !externalSignal.aborted
+      if (isTimeout) {
+        throw new OverpassError(
+          'タイムアウトしました（30秒）',
+          'timeout',
+          '検索範囲を狭めて再試行してください。'
+        )
+      }
+      throw new OverpassError(
+        '検索がキャンセルされました',
+        'network',
+        null
+      )
     }
-    throw error
+    if (error instanceof OverpassError) {
+      throw error
+    }
+    // ネットワークエラー
+    throw new OverpassError(
+      `接続に失敗しました: ${error.message}`,
+      'network',
+      'ネットワーク接続を確認して再試行してください。'
+    )
   } finally {
     clearTimeout(timeoutId)
+    if (externalSignal) {
+      externalSignal.removeEventListener('abort', () => controller.abort())
+    }
   }
 }
 
 /**
  * Overpass APIのレスポンスを標準形式に変換
+ * node / way / relationの型とIDを保持
  */
-function parseOverpassResponse(data) {
+export function parseOverpassResponse(data) {
   if (!data.elements) return []
 
-  return data.elements.map((el) => {
-    const result = {
-      id: el.id,
-      type: el.type, // 'node' | 'way' | 'relation'
-      tags: el.tags || {},
-      lat: null,
-      lon: null
-    }
+  return data.elements
+    .map((el) => {
+      const result = {
+        id: el.id,
+        type: el.type, // 'node' | 'way' | 'relation'
+        tags: el.tags || {},
+        lat: null,
+        lon: null
+      }
 
-    // Get coordinates
-    if (el.type === 'node') {
-      result.lat = el.lat
-      result.lon = el.lon
-    } else if (el.center) {
-      result.lat = el.center.lat
-      result.lon = el.center.lon
-    } else if (el.type === 'way' && el.nodes && el.nodes.length > 0) {
-      // For ways without center, we don't have coordinates in "out body"
-      // Use center if available
-      if (el.center) {
+      // 座標取得
+      if (el.type === 'node') {
+        result.lat = el.lat
+        result.lon = el.lon
+      } else if (el.center) {
         result.lat = el.center.lat
         result.lon = el.center.lon
       }
-    }
 
-    // Extract name
-    if (el.tags && el.tags.name) {
-      result.name = el.tags.name
-    }
+      // 名前抽出
+      if (el.tags && el.tags.name) {
+        result.name = el.tags.name
+      }
 
-    return result
-  }).filter((r) => r.lat !== null && r.lon !== null)
+      return result
+    })
+    .filter((r) => r.lat !== null && r.lon !== null)
 }
 
 /**
- * キーワードで結果をフィルタ
+ * キーワードで結果をフィルタ（日本語対応: 全角/半角正規化）
  */
 export function filterByKeyword(results, keyword) {
   if (!keyword || keyword.trim() === '') return results
-  const kw = keyword.trim().toLowerCase()
+  const kw = normalizeKeyword(keyword)
   return results.filter((r) => {
-    const name = (r.name || '').toLowerCase()
+    const name = normalizeKeyword(r.name || '')
     return name.includes(kw)
   })
+}
+
+/**
+ * 日本語キーワード正規化
+ * 全角→半角、大文字/小文字統一
+ */
+function normalizeKeyword(str) {
+  return str
+    .toLowerCase()
+    .replace(/[\uFF10-\uFF19]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[\uFF21-\uFF3A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[\uFF41-\uFF5A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/\uFF5C/g, '|')
+    .replace(/\u3000/g, ' ')
 }

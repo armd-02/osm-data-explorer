@@ -1,54 +1,82 @@
 import React from 'react'
 import { useApp } from '../context/AppContext'
 
-function StatusBanner() {
-  const { state, dispatch } = useApp()
-  const { status, error, results } = state
+const ERROR_LABELS = {
+  timeout: 'タイムアウト',
+  rate_limit: 'レート制限',
+  server_error: 'サーバーエラー',
+  network: '接続エラー',
+  empty: '結果なし',
+  invalid_query: 'クエリエラー'
+}
 
-  // No banner for idle or success (results shown in panel)
-  if (status === 'idle' || status === 'success') return null
+function StatusBanner() {
+  const { state } = useApp()
+  const { status, error, errorType, errorSuggestion, results, fetchMeta } = state
 
   if (status === 'loading') {
     return (
-      <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2">
-        <svg className="w-4 h-4 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0a8 8 0 00-8 8z" />
-        </svg>
-        <span className="text-sm text-blue-700">Overpass API に問い合わせ中...</span>
+      <div className="bg-primary-50 border-b border-primary-200 px-4 py-2 flex items-center gap-2">
+        <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm text-primary-800">Overpass APIにクエリ実行中...</span>
       </div>
     )
   }
 
-  if (status === 'error') {
+  if (status === 'error' && error) {
+    const label = errorType ? ERROR_LABELS[errorType] : null
     return (
-      <div className="bg-red-50 border-b border-red-100 px-4 py-2 flex items-center gap-2">
-        <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M12 9v2m0 4h.01m5.618-4.954l-1.036 1.036M12 4l2.496 2.496L12 4zm0 0l-2.496 2.496" />
-        </svg>
-        <div className="flex-1">
-          <span className="text-sm text-red-700">
-            {error || '検索に失敗しました'}
+      <div className="bg-red-50 border-b border-red-200 px-4 py-2.5">
+        <div className="flex items-start gap-2">
+          <span className="text-red-600 text-sm font-medium shrink-0 mt-0.5">
+            ⚠️ {label ? `${label}: ` : ''}{error}
           </span>
         </div>
-        <button
-          onClick={() => dispatch({ type: 'CLEAR_RESULTS' })}
-          className="text-xs text-red-600 hover:text-red-800 underline"
-        >
-          閉じる
-        </button>
+        {errorSuggestion && (
+          <p className="text-xs text-red-500 mt-1 ml-5">
+            → {errorSuggestion}
+          </p>
+        )}
       </div>
     )
   }
 
-  // Large results warning
-  if (results.length > 1000) {
+  if (status === 'success') {
+    const count = results.length
+    if (count === 0) {
+      return (
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-2">
+          <span className="text-sm text-slate-600">
+            該当する結果がありません。検索条件や範囲を変更して試してください。
+          </span>
+        </div>
+      )
+    }
+
+    const timeStr = fetchMeta?.fetchedAt
+      ? new Date(fetchMeta.fetchedAt).toLocaleString('ja-JP', {
+          month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit'
+        })
+      : null
+
     return (
-      <div className="bg-amber-50 border-b border-amber-100 px-4 py-2">
-        <span className="text-sm text-amber-700">
-          ⚠️ {results.length} 件の結果があります。表示には時間がかかる場合があります。
+      <div className="bg-green-50 border-b border-green-200 px-4 py-2 flex items-center gap-3 flex-wrap">
+        <span className="text-sm text-green-800">
+          {count.toLocaleString()}件の結果を取得しました
         </span>
+        {count > 5000 && (
+          <span className="text-xs text-amber-600">
+            ⚠️ 大量の結果です。範囲を狭めると表示が早くなります。
+          </span>
+        )}
+        {timeStr && (
+          <span className="text-xs text-slate-500">
+            取得: {timeStr}
+            {fetchMeta?.cached && '（キャッシュ）'}
+            {fetchMeta?.endpoint && ` / ${fetchMeta.endpoint}`}
+          </span>
+        )}
       </div>
     )
   }
