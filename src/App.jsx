@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { AppContext } from './context/AppContext'
 import Layout from './components/Layout'
 import SearchPanel from './components/SearchPanel'
@@ -6,10 +6,14 @@ import MapView from './components/MapView'
 import ResultsPanel from './components/ResultsPanel'
 import StatisticsPanel from './components/StatisticsPanel'
 import ExportBar from './components/ExportBar'
+import ShareButton from './components/ShareButton'
+import EditPanel from './components/EditPanel'
+import BatchMatch from './components/BatchMatch'
 import StatusBanner from './components/StatusBanner'
+import { decodeURLToState } from './utils/urlState'
 
 function App() {
-  const [rightTab, setRightTab] = useState('results') // 'results' | 'stats'
+  const [rightTab, setRightTab] = useState('results') // 'results' | 'stats' | 'batch'
   const [state, dispatch] = React.useReducer(
     (state, action) => {
       switch (action.type) {
@@ -60,19 +64,44 @@ function App() {
     }
   )
 
+  // URLから状態を復元（初回ロード時）
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current) return
+    restoredRef.current = true
+    
+    const urlState = decodeURLToState(window.location.search)
+    if (urlState) {
+      if (urlState.searchMode) dispatch({ type: 'SET_SEARCH_MODE', payload: urlState.searchMode })
+      if (urlState.simpleSearch) dispatch({ type: 'SET_SIMPLE_SEARCH', payload: urlState.simpleSearch })
+      if (urlState.advancedSearch) dispatch({ type: 'SET_ADVANCED_SEARCH', payload: urlState.advancedSearch })
+      if (urlState.bbox) dispatch({ type: 'SET_BBOX', payload: urlState.bbox })
+    }
+  }, [dispatch])
+
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       <Layout>
         <div className="flex flex-col lg:flex-row h-full">
           {/* Search Panel - left side */}
-          <div className="w-full lg:w-80 xl:w-96 shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-y-auto">
+          <div className="w-full lg:w-80 xl:w-96 shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col">
             <SearchPanel />
+            {/* Share button */}
+            <div className="px-3 py-2 border-t border-slate-100 flex items-center gap-2 shrink-0">
+              <ShareButton />
+              <span className="text-[10px] text-slate-400">
+                ※ 条件は共有されますが、データは常時更新されます
+              </span>
+            </div>
           </div>
 
           {/* Map + Results - right side */}
           <div className="flex-1 flex flex-col min-h-0">
             {/* Status Banner */}
             <StatusBanner />
+
+            {/* Edit Panel (0件時の導線) */}
+            <EditPanel />
 
             {/* Map */}
             <div className="flex-1 relative min-h-[300px] lg:min-h-[400px]">
@@ -99,10 +128,20 @@ function App() {
                 >
                   集計
                 </button>
+                <button
+                  onClick={() => setRightTab('batch')}
+                  className={`px-3 py-1 text-xs rounded-t transition-colors ${
+                    rightTab === 'batch' ? 'text-primary-700 font-medium border-b-2 border-primary-500' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  一括照合
+                </button>
               </div>
               {/* Content */}
               <div className="flex-1 overflow-y-auto min-h-0">
-                {rightTab === 'results' ? <ResultsPanel /> : <StatisticsPanel />}
+                {rightTab === 'results' && <ResultsPanel />}
+                {rightTab === 'stats' && <StatisticsPanel />}
+                {rightTab === 'batch' && <BatchMatch />}
               </div>
               {/* Export bar */}
               <ExportBar />
