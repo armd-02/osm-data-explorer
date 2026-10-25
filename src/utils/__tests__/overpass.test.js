@@ -9,7 +9,7 @@
  * fetch をモックし、ネットワークなしで応答シナリオを検証する。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { executeOverpassQuery, clearCache } from '../overpass'
+import { executeOverpassQuery, clearCache, parseOverpassResponse } from '../overpass'
 import { getEndpointLabel } from '../../config'
 
 // ---------- モックヘルパー ----------
@@ -134,5 +134,41 @@ describe('キャッシュキーのエンドポイント区別（Issue #17 完了
     const third = await executeOverpassQuery(QUERY, { endpoint: 'public' })
     expect(third.meta.cached).toBe(true)
     expect(third.results[0].id).toBe(200)
+  })
+})
+
+describe('parseOverpassResponse: タグ無しノードの除外', () => {
+  it('タグが空のnode（匿名ノード）を除外する', () => {
+    const data = overpassPayload([
+      { type: 'node', id: 368238913, lat: 35.69, lon: 139.77, tags: {} },  // 匿名ノード
+      { type: 'node', id: 111, lat: 35.70, lon: 139.78, tags: { name: 'Cafe A', amenity: 'cafe' } },  // 通常ノード
+      { type: 'way', id: 222, center: { lat: 35.71, lon: 139.79 }, tags: { name: 'Road X' }, nodes: [368238913, 111] },  // Way
+    ])
+    const results = parseOverpassResponse(data)
+    // 匿名ノード(id=368238913)は除外される
+    expect(results.find(r => r.id === 368238913)).toBeUndefined()
+    // タグありノードとWayは残る
+    expect(results.find(r => r.id === 111)).toBeDefined()
+    expect(results.find(r => r.id === 222)).toBeDefined()
+    expect(results.length).toBe(2)
+  })
+
+  it('タグが空のnodeのみで構成されるレスポンスは空配列を返す', () => {
+    const data = overpassPayload([
+      { type: 'node', id: 1, lat: 35.0, lon: 139.0, tags: {} },
+      { type: 'node', id: 2, lat: 35.1, lon: 139.1, tags: {} },
+    ])
+    const results = parseOverpassResponse(data)
+    expect(results).toEqual([])
+  })
+
+  it('タグありノードは正常に保持される', () => {
+    const data = overpassPayload([
+      { type: 'node', id: 1, lat: 35.0, lon: 139.0, tags: { highway: 'bus_stop' } },
+    ])
+    const results = parseOverpassResponse(data)
+    expect(results.length).toBe(1)
+    expect(results[0].id).toBe(1)
+    expect(results[0].tags.highway).toBe('bus_stop')
   })
 })

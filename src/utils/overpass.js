@@ -339,6 +339,8 @@ export function parseOverpassResponse(data) {
       return result
     })
     .filter((r) => r.lat !== null && r.lon !== null)
+    // Wayを構成するタグ無しノード（匿名ノード）を除外
+    .filter((r) => !(r.type === 'node' && Object.keys(r.tags).length === 0))
 }
 
 /**
