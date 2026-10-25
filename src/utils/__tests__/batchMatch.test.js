@@ -114,3 +114,42 @@ describe('parseNameList', () => {
     expect(parseNameList(text)).toEqual(['店舗名', 'ラーメン屋 田中'])
   })
 })
+
+describe('日本語の名称表記揺れ（柿しぶ／柿渋、助詞「の」）', () => {
+  const shop = (id, name) => ({
+    type: 'node', id, name, lat: 34.72, lon: 135.48, tags: { name }
+  })
+
+  it('「柿しぶ 大阪西川」から「柿渋の大阪西川」を類似候補として検出', () => {
+    const result = matchName('柿しぶ 大阪西川', [shop(301, '柿渋の大阪西川')])
+    expect(result.matchType).toBe('similar')
+    expect(result.matched.id).toBe(301)
+    expect(result.candidates[0].match.value).toBe('柿渋の大阪西川')
+  })
+
+  it('逆方向（OSMの名前が「柿しぶ 大阪西川」）でも候補になる', () => {
+    const result = matchName('柿渋の大阪西川', [shop(302, '柿しぶ 大阪西川')])
+    expect(result.matchType).toBe('similar')
+    expect(result.matched.id).toBe(302)
+  })
+
+  it('漢字／かなだけの表記揺れは完全一致ではなく類似候補', () => {
+    const result = matchName('柿しぶ大阪西川', [shop(303, '柿渋大阪西川')])
+    expect(result.matchType).toBe('similar')
+  })
+
+  it('同じ正式名称は完全一致として扱い、類似候補より優先する', () => {
+    const result = matchName('柿しぶ 大阪西川', [
+      shop(304, '柿渋の大阪西川'),
+      shop(305, '柿しぶ 大阪西川')
+    ])
+    expect(result.matchType).toBe('exact')
+    expect(result.matched.id).toBe(305)
+    expect(result.candidates.map(c => c.match.type)).toEqual(['exact', 'similar'])
+  })
+
+  it('異なる店舗名や短すぎる助詞省略は候補にしない', () => {
+    expect(matchName('柿しぶ 大阪西川', [shop(306, '柿渋の大阪東川')]).matchType).toBe('none')
+    expect(matchName('山家', [shop(307, '山の家')]).matchType).toBe('none')
+  })
+})
