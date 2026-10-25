@@ -85,7 +85,7 @@ function App() {
       <Layout>
         <div className="flex flex-col lg:flex-row min-h-full lg:h-full">
           {/* Search Panel - left side */}
-          <div className="w-full lg:w-80 xl:w-96 shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col">
+          <div className="w-full lg:w-80 xl:w-96 shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col lg:overflow-y-auto">
             <SearchPanel />
             {/* Share button */}
             <div className="px-3 py-2 border-t border-slate-100 flex items-center gap-2 shrink-0">
