@@ -9,6 +9,10 @@ import MapToolbar from './MapToolbar'
 const DEFAULT_CENTER = [34.6937, 135.5023]
 const DEFAULT_ZOOM = 13
 
+// 地図上のマーカー表示上限。超過時は先頭分のみ表示し、制約を通知で明示する。
+// 検索結果一覧・集計・CSV/GeoJSON出力は全件対応（この上限は地図表示のみ）。
+const MAX_MAP_MARKERS = 500
+
 function MapView() {
   const mapRef = useRef(null)
   const leafletRef = useRef(null)
@@ -60,6 +64,22 @@ function MapView() {
     }
   }, [dispatch])
 
+  // ウィンドウリサイズ（スマホの画面回転など）で地図サイズを再調整
+  useEffect(() => {
+    let timer = null
+    const onResize = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        if (leafletRef.current) leafletRef.current.invalidateSize()
+      }, 100)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      if (timer) clearTimeout(timer)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [])
+
   // Draw BBOX overlay
   useEffect(() => {
     if (!leafletRef.current) return
@@ -94,9 +114,12 @@ function MapView() {
     markersRef.current.forEach((m) => map.removeLayer(m))
     markersRef.current = []
 
-    // Add new markers
-    if (results.length > 0 && results.length <= 500) {
-      results.forEach((result) => {
+    // Add new markers (地図上は MAX_MAP_MARKERS 件まで表示)
+    if (results.length > 0) {
+      const visibleResults = results.length > MAX_MAP_MARKERS
+        ? results.slice(0, MAX_MAP_MARKERS)
+        : results
+      visibleResults.forEach((result) => {
         if (result.lat && result.lon) {
           const marker = L.marker([result.lat, result.lon], {
             icon: L.divIcon({
@@ -151,6 +174,11 @@ function MapView() {
         bboxLayerRef={bboxLayerRef}
         onDrawComplete={handleDrawComplete}
       />
+      {results.length > MAX_MAP_MARKERS && (
+        <div className="absolute bottom-1 left-1 right-1 z-[1000] bg-amber-50/95 border border-amber-200 text-amber-800 text-[10px] leading-tight px-2 py-1 rounded shadow-sm">
+          地図上の表示は {MAX_MAP_MARKERS} 件まで（全 {results.length.toLocaleString()} 件）。検索結果一覧・集計・CSV/GeoJSON出力は全件対応です。
+        </div>
+      )}
     </div>
   )
 }

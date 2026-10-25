@@ -14,6 +14,11 @@ function StatusBanner() {
   const { state } = useApp()
   const { status, error, errorType, errorSuggestion, results, fetchMeta } = state
 
+  // モバイルで検索後に結果パネルへ直接スクロールするための導線
+  const scrollToResults = () => {
+    document.getElementById('results-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   if (status === 'loading') {
     return (
       <div className="bg-primary-50 border-b border-primary-200 px-4 py-2 flex items-center gap-2">
@@ -64,22 +69,31 @@ function StatusBanner() {
       : null
 
     return (
-      <div className="bg-green-50 border-b border-green-200 px-4 py-2 flex items-center gap-3 flex-wrap">
-        <span className="text-sm text-green-800">
-          {count.toLocaleString()}件の結果を取得しました
-        </span>
-        {count > 5000 && (
-          <span className="text-xs text-amber-600">
-            ⚠️ 大量の結果です。範囲を狭めると表示が早くなります。
+      <div className="bg-green-50 border-b border-green-200 px-4 py-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-sm text-green-800">
+            {count.toLocaleString()}件の結果を取得しました
           </span>
-        )}
-        {timeStr && (
-          <span className="text-xs text-slate-500">
-            取得: {timeStr}
-            {fetchMeta?.cached && '（キャッシュ）'}
-            {fetchMeta?.endpoint && ` / ${fetchMeta.endpoint}`}
-          </span>
-        )}
+          {count > 5000 && (
+            <span className="text-xs text-amber-600">
+              ⚠️ 大量の結果です。範囲を狭めると表示が早くなります。
+            </span>
+          )}
+          {timeStr && (
+            <span className="text-xs text-slate-500">
+              取得: {timeStr}
+              {fetchMeta?.cached && '（キャッシュ）'}
+              {fetchMeta?.endpoint && ` / ${fetchMeta.endpoint}`}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={scrollToResults}
+          className="lg:hidden mt-1.5 w-full py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          結果を見る ↓
+        </button>
       </div>
     )
   }

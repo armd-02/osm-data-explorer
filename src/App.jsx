@@ -83,7 +83,7 @@ function App() {
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       <Layout>
-        <div className="flex flex-col lg:flex-row h-full">
+        <div className="flex flex-col lg:flex-row min-h-full lg:h-full">
           {/* Search Panel - left side */}
           <div className="w-full lg:w-80 xl:w-96 shrink-0 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col">
             <SearchPanel />
@@ -97,7 +97,7 @@ function App() {
           </div>
 
           {/* Map + Results - right side */}
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex flex-col min-h-0 lg:flex-1">
             {/* Status Banner */}
             <StatusBanner />
 
@@ -105,12 +105,12 @@ function App() {
             <EditPanel />
 
             {/* Map */}
-            <div className="flex-1 relative min-h-[300px] lg:min-h-[400px]">
+            <div className="relative h-[300px] lg:h-auto lg:flex-1 lg:min-h-[400px]">
               <MapView />
             </div>
 
             {/* Results / Stats Panel - bottom */}
-            <div className="h-48 lg:h-56 shrink-0 border-t border-slate-200 flex flex-col">
+            <div id="results-panel" className="h-80 lg:h-56 shrink-0 border-t border-slate-200 flex flex-col">
               {/* Tab bar */}
               <div className="flex items-center gap-1 px-3 py-1 bg-white border-b border-slate-100 shrink-0">
                 <button

@@ -22,7 +22,7 @@ function Layout({ children }) {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 min-h-0 overflow-hidden">
+      <main className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
         {children}
       </main>
 

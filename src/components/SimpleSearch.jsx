@@ -77,6 +77,11 @@ function SimpleSearch() {
         <p className="mt-1 text-[11px] text-slate-400">
           ※ 初期カテゴリは代表的な施設のみです。詳細検索で任意のタグを指定できます。
         </p>
+        {!category && (
+          <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1">
+            ⚠️ カテゴリ未指定だと、範囲内の<strong>全OSM地物</strong>（道路・建物・施設など大量）を取得します。カテゴリやキーワードで絞り込むと、目的の施設に集中して検索が速くなります。
+          </p>
+        )}
       </div>
 
       {/* Keyword search */}
