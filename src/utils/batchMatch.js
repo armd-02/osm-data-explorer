@@ -1,8 +1,76 @@
 /**
  * 店舗名の一括照合
  * 名称リストをOSMデータと照合し、候補を提示する
+ * 判定優先順: 完全一致 > 部分一致 > 類似（編集距離）
  */
 import { normalizeText, romanizeText } from './overpass'
+
+/**
+ * レーベンシュタイン距離（編集距離）を計算
+ * DP方式。長さが差で既に閾値を超える場合は早期終了。
+ */
+export function levenshteinDistance(a, b, maxDist = Infinity) {
+  const la = a.length, lb = b.length
+  if (Math.abs(la - lb) > maxDist) return maxDist + 1
+
+  // 1行だけ保持するメモリ効率化DP
+  let prev = Array.from({ length: lb + 1 }, (_, j) => j)
+  let curr = new Array(lb + 1)
+
+  for (let i = 1; i <= la; i++) {
+    curr[0] = i
+    let rowMin = curr[0]
+    for (let j = 1; j <= lb; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+      if (curr[j] < rowMin) rowMin = curr[j]
+    }
+    // 早期終了: この行の最小値が既にmaxDistを超えたら終了
+    if (rowMin > maxDist) return maxDist + 1
+    ;[prev, curr] = [curr, prev]
+  }
+  return prev[lb]
+}
+
+/**
+ * 名称の長さに基づく編集距離の閾値
+ * 6文字以上: 距離2以内 / 4〜5文字: 距離1以内 / 3文字以下: 類似検索しない
+ */
+function getFuzzyThreshold(shorterLen) {
+  if (shorterLen >= 6) return 2
+  if (shorterLen >= 4) return 1
+  return -1 // 3文字以下は類似検索しない
+}
+
+/**
+ * 編集距離による類似候補を検出
+ * 正規化後の名称同士でレーベンシュタイン距離を計算し、閾値以内ならsimilar候補とする
+ */
+function findFuzzyMatch(normInput, normTarget, result, nameTags) {
+  let best = null
+  let bestDist = Infinity
+
+  for (const tag of nameTags) {
+    const value = result.tags?.[tag]
+    if (!value) continue
+
+    const normVal = normalizeText(value)
+    if (!normVal) continue
+
+    // 長さが差で既に閾値を超える場合はスキップ
+    const shorterLen = Math.min(normInput.length, normVal.length)
+    const maxDist = getFuzzyThreshold(shorterLen)
+    if (maxDist < 0) continue
+
+    const dist = levenshteinDistance(normInput, normVal, maxDist)
+    if (dist <= maxDist && dist < bestDist) {
+      bestDist = dist
+      best = { type: 'similar', tag, value, distance: dist }
+    }
+  }
+
+  return best
+}
 
 /**
  * 1件の名称をOSM結果と照合
@@ -50,6 +118,14 @@ export function matchName(name, results) {
         if (!bestMatch || bestMatch.type === 'similar') {
           bestMatch = { type: 'similar', tag, value }
         }
+      }
+    }
+
+    // 完全一致/部分一致が見つからない場合: 編集距離による類似判定
+    if (!bestMatch || bestMatch.type === 'similar') {
+      const fuzzyResult = findFuzzyMatch(normName, normName, result, nameTags)
+      if (fuzzyResult && (!bestMatch || bestMatch.type === 'similar')) {
+        bestMatch = fuzzyResult
       }
     }
 
