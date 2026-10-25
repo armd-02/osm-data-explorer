@@ -3,6 +3,7 @@
  * 名称リストをOSMデータと照合し、候補を提示する
  */
 import { normalizeText, romanizeText } from './overpass'
+import { normalizeNameForFuzzyMatch } from './nameVariants'
 
 /**
  * 1件の名称をOSM結果と照合
@@ -15,7 +16,9 @@ export function matchName(name, results) {
 
   const normName = normalizeText(name)
   const romName = romanizeText(name)
+  const fuzzyName = normalizeNameForFuzzyMatch(name)
   const candidates = []
+  const typeOrder = { exact: 0, partial: 1, similar: 2 }
 
   for (const result of results) {
     const nameTags = ['name', 'name:ja', 'official_name', 'alt_name', 'name:en']
@@ -27,30 +30,25 @@ export function matchName(name, results) {
 
       const normVal = normalizeText(value)
       const romVal = romanizeText(value)
+      const fuzzyVal = normalizeNameForFuzzyMatch(value)
+      let type = null
 
-      // 完全一致（正規化後）
-      if (normVal === normName) {
-        bestMatch = { type: 'exact', tag, value }
-        break
+      if (normVal === normName || (romVal && romName && romVal === romName)) {
+        type = 'exact'
+      } else if (normVal.includes(normName) || normName.includes(normVal)) {
+        type = 'partial'
+      } else if (romVal && romName && (romVal.includes(romName) || romName.includes(romVal))) {
+        type = 'similar'
+      } else if (fuzzyName.length >= 6 && fuzzyName === fuzzyVal) {
+        // 語の表記揺れ・接続助詞の省略は「完全一致」としない。
+        // 一致候補として提示し、ユーザーによるOSM IDの確認を必要とする。
+        type = 'similar'
       }
-      // ローマ字一致
-      if (romVal && romName && romVal === romName) {
-        if (!bestMatch || bestMatch.type !== 'exact') {
-          bestMatch = { type: 'exact', tag, value }
-        }
+
+      if (type && (!bestMatch || typeOrder[type] < typeOrder[bestMatch.type])) {
+        bestMatch = { type, tag, value }
       }
-      // 部分一致
-      if (normVal.includes(normName) || normName.includes(normVal)) {
-        if (!bestMatch || bestMatch.type === 'partial') {
-          bestMatch = { type: 'partial', tag, value }
-        }
-      }
-      // 類似（ローマ字部分一致）
-      if (romVal && romName && (romVal.includes(romName) || romName.includes(romVal))) {
-        if (!bestMatch || bestMatch.type === 'similar') {
-          bestMatch = { type: 'similar', tag, value }
-        }
-      }
+      if (bestMatch?.type === 'exact') break
     }
 
     if (bestMatch) {
@@ -60,7 +58,6 @@ export function matchName(name, results) {
 
   // 候補をソート（exact > partial > similar）
   // 注意: typeOrder['exact'] が 0 なので ?? を使用する（|| だと 0 がfalsy扱いされる）
-  const typeOrder = { exact: 0, partial: 1, similar: 2 }
   candidates.sort((a, b) => (typeOrder[a.match.type] ?? 3) - (typeOrder[b.match.type] ?? 3))
 
   if (candidates.length === 0) {
