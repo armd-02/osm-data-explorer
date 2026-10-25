@@ -9,6 +9,20 @@ import MapToolbar from './MapToolbar'
 const DEFAULT_CENTER = [34.6937, 135.5023]
 const DEFAULT_ZOOM = 13
 
+/**
+ * HTMLエスケープ（XSS対策）
+ * OSMタグ値・名称等は第三者編集可能データのため、
+ * HTMLとして解釈される前にエスケープする。
+ */
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // 地図上のマーカー表示上限。超過時は先頭分のみ表示し、制約を通知で明示する。
 // 検索結果一覧・集計・CSV/GeoJSON出力は全件対応（この上限は地図表示のみ）。
 const MAX_MAP_MARKERS = 500
@@ -18,6 +32,8 @@ function MapView() {
   const leafletRef = useRef(null)
   const bboxLayerRef = useRef(null)
   const markersRef = useRef([])
+  // URL復元BBOXで地図をfitする必要があるかどうか（初回のみ）
+  const needsFitRef = useRef(false)
   const { state, dispatch } = useApp()
   const { results, activeResultId, bbox } = state
 
@@ -25,9 +41,15 @@ function MapView() {
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return
 
+    // URLからBBOXが復元されている場合、初期位置をその中心に設定
+    const initialBbox = state.bbox
+    const center = initialBbox
+      ? [(initialBbox.south + initialBbox.north) / 2, (initialBbox.west + initialBbox.east) / 2]
+      : DEFAULT_CENTER
+
     const map = L.map(mapRef.current, {
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
+      center,
+      zoom: initialBbox ? 12 : DEFAULT_ZOOM,
       zoomControl: true
     })
 
@@ -40,8 +62,18 @@ function MapView() {
     leafletRef.current = map
     setMapInstance(map)
 
-    // Update BBOX when map moves
+    // URL復元BBOXなら、bboxLayerのeffectでfitBoundsする
+    if (initialBbox) {
+      needsFitRef.current = true
+    }
+
+    // Update BBOX when map moves（ただしfitBounds直後はスキップ）
+    let skipNextUpdate = false
     const updateBbox = () => {
+      if (skipNextUpdate) {
+        skipNextUpdate = false
+        return
+      }
       const bounds = map.getBounds()
       dispatch({
         type: 'SET_BBOX',
@@ -55,7 +87,16 @@ function MapView() {
     }
 
     map.on('moveend zoomend', updateBbox)
-    updateBbox()
+    // 初期BBOXを反映（fitBoundsはbboxLayerのeffectで行う）
+    if (initialBbox) {
+      skipNextUpdate = true
+      dispatch({
+        type: 'SET_BBOX',
+        payload: { ...initialBbox }
+      })
+    } else {
+      updateBbox()
+    }
 
     return () => {
       map.remove()
@@ -80,7 +121,7 @@ function MapView() {
     }
   }, [])
 
-  // Draw BBOX overlay
+  // Draw BBOX overlay + fitBounds（URL復元時のみ初回）
   useEffect(() => {
     if (!leafletRef.current) return
     const map = leafletRef.current
@@ -102,6 +143,12 @@ function MapView() {
         fillOpacity: 0.05,
         dashArray: '6'
       }).addTo(map)
+
+      // URLからBBOXを復元した場合、地図をその範囲に合わせる
+      if (needsFitRef.current) {
+        map.fitBounds(bounds, { padding: [20, 20] })
+        needsFitRef.current = false
+      }
     }
   }, [bbox])
 
@@ -129,13 +176,13 @@ function MapView() {
             })
           }).addTo(map)
 
-          const name = result.name || '（名前のない要素）'
-          const type = result.type || 'node'
-          const osmUrl = `https://www.openstreetmap.org/${type}/${result.id}`
+          const name = escapeHtml(result.name || '（名前のない要素）')
+          const type = escapeHtml(result.type || 'node')
+          const osmUrl = `https://www.openstreetmap.org/${result.type}/${result.id}`
           const keyTags = Object.entries(result.tags || {})
             .filter(([k]) => k !== 'name' && k !== 'name:ja')
             .slice(0, 3)
-            .map(([k, v]) => `<div style="color:#555;font-size:11px">${k}: ${v}</div>`)
+            .map(([k, v]) => `<div style="color:#555;font-size:11px">${escapeHtml(k)}: ${escapeHtml(v)}</div>`)
             .join('')
           marker.bindPopup(`
             <div style="font-size: 12px; min-width: 160px; max-width: 220px;">

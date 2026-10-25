@@ -4,6 +4,20 @@ import { useApp } from '../context/AppContext'
 import { geocode, isAdministrativeBoundary } from '../utils/geo'
 
 /**
+ * HTMLエスケープ（XSS対策）
+ * Nominatimの地名表示等は第三者由来データのため、
+ * HTMLとして解釈される前にエスケープする。
+ */
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
  * 地図ツールバー: 地名検索 + 矩形描画
  */
 function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
@@ -42,7 +56,7 @@ function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
             iconAnchor: [8, 8]
           })
         }).addTo(map).bindPopup(
-          `<strong>${result.displayName}</strong><br/><small>検索範囲は地図の表示範囲になります</small>`
+          `<strong>${escapeHtml(result.displayName)}</strong><br/><small>検索範囲は地図の表示範囲になります</small>`
         ).openPopup()
 
         // 行政区域の場合、メッセージを表示

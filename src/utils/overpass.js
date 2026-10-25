@@ -63,65 +63,111 @@ export class OverpassError extends Error {
 // ============================================================
 
 /**
- * カテゴリのタグ条件をOverpassクエリ文字列に変換
+ * カテゴリのタグ条件をOverpassクエリに組み込むためのフィルタ情報を変換
  */
 function buildCategoryFilter(category) {
-  if (!category) return ''
+  if (!category) return null
   const cat = getCategoryById(category)
+  if (!cat) return null
   return categoryToQueryFilter(cat)
 }
 
 /**
  * かんたん検索用クエリを生成
+ * - カテゴリ指定時: categoryToQueryFilter の結果に基づいてunion/ANDを生成
+ * - カテゴリなし: BBOX内全要素
  */
 export function buildSimpleQuery(bbox, category, keyword) {
   const { south, west, north, east } = bbox
-  const bboxStr = `${south},${west},${north},${east}`
+  const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
 
-  const tagFilter = buildCategoryFilter(category)
+  const catFilter = buildCategoryFilter(category)
 
-  let query
-  if (tagFilter) {
-    query = `[out:json][timeout:25];(\n  node[${tagFilter}](${bboxStr});\n  way[${tagFilter}](${bboxStr});\n  relation[${tagFilter}](${bboxStr});\n);\nout body center;\n`
+  let body
+  if (catFilter && (catFilter.unionFilters.length > 0 || catFilter.andFilter)) {
+    body = buildFilterBody(bboxStr, catFilter)
   } else {
     // カテゴリなし: 全要素
-    query = `[out:json][timeout:25];(\n  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});\n);\nout body center;\n`
+    body = `  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});`
   }
 
+  const query = `[out:json][timeout:25];(\n${body}\n);\nout body center;\n`
   return { query, keyword }
 }
 
 /**
  * 詳細検索用クエリを生成
+ * - AND模式: 各条件を個別フィルタとして連結 [cond1][cond2]
+ * - OR模式: 各条件をunionの別ブランチに分割
  */
 export function buildAdvancedQuery(bbox, tags, keyword, useAnd) {
   const { south, west, north, east } = bbox
-  const bboxStr = `${south},${west},${north},${east}`
+  const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
 
-  const conditions = tags
+  // 各tagをOverpass QLフィルタに変換
+  const filters = tags
     .map((tag) => {
       if (!tag.key) return null
       const safeKey = escapeStr(tag.key)
-      if (tag.mode === 'equals') return `${safeKey}=${escapeStr(tag.value || '')}`
+      if (tag.mode === 'equals') return `${safeKey}=${quoteValue(tag.value || '')}`
       if (tag.mode === 'exists') return `${safeKey}=*`
       if (tag.mode === 'not_exists') return `!${safeKey}`
       return null
     })
     .filter(Boolean)
 
-  const tagFilter = conditions.join(' ')
-  const filter = tagFilter ? `[${tagFilter}]` : ''
+  let body
+  if (filters.length === 0) {
+    // 条件なし: 全要素
+    body = `  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});`
+  } else if (useAnd) {
+    // AND: 全フィルタを連結 [f1][f2][f3]
+    const andFilter = filters.map(f => `[${f}]`).join('')
+    body = `  node${andFilter}(${bboxStr});\n  way${andFilter}(${bboxStr});\n  relation${andFilter}(${bboxStr});`
+  } else {
+    // OR: 各フィルタをunionの別ブランチに
+    body = filters
+      .flatMap(f => `  node[${f}](${bboxStr});\n  way[${f}](${bboxStr});\n  relation[${f}](${bboxStr});`)
+      .join('\n')
+  }
 
-  const query = `[out:json][timeout:25];(\n  node${filter}(${bboxStr});\n  way${filter}(${bboxStr});\n  relation${filter}(${bboxStr});\n);\nout body center;\n`
-
+  const query = `[out:json][timeout:25];(\n${body}\n);\nout body center;\n`
   return { query, keyword }
+}
+
+/**
+ * カテゴリフィルタ情報からunion body文字列を生成
+ */
+function buildFilterBody(bboxStr, catFilter) {
+  if (catFilter.unionFilters.length > 0) {
+    // OR: 各フィルタをunionの別ブランチに
+    return catFilter.unionFilters
+      .flatMap(f => `  node[${f}](${bboxStr});\n  way[${f}](${bboxStr});\n  relation[${f}](${bboxStr});`)
+      .join('\n')
+  }
+  if (catFilter.andFilter) {
+    // AND: 連結フィルタ
+    return `  node${catFilter.andFilter}(${bboxStr});\n  way${catFilter.andFilter}(${bboxStr});\n  relation${catFilter.andFilter}(${bboxStr});`
+  }
+  return `  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});`
 }
 
 /**
  * 文字列エスケープ（Overpassクエリ内）
  */
 function escapeStr(str) {
-  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')
+  return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+/**
+ * 値を適切に引用符で囲む（特殊文字を含む場合のみ）
+ */
+function quoteValue(str) {
+  const s = String(str)
+  if (/[",\\\s[\](){}]/.test(s)) {
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  }
+  return s
 }
 
 // ============================================================

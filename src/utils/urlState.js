@@ -3,6 +3,9 @@
  * 
  * URL query parameterに検索状態をエンコードし、
  * 他のブラウザで開いた際に状態を復元する。
+ * 
+ * タグ条件はJSON + percent-encodingで表現する。
+ * 旧形式（;と:区切り）のURLは後方互換でデコードを試みる。
  */
 
 const PARAM_KEYS = {
@@ -14,7 +17,7 @@ const PARAM_KEYS = {
   lon: 'lon',        // center lon
   zoom: 'z',         // zoom level
   bbox: 'b',         // bbox (s,w,n,e encoded)
-  tags: 't',         // tag conditions (encoded)
+  tags: 't',         // tag conditions (JSON encoded)
   and: 'and',        // AND/OR: 1/0
   advKw: 'ak',       // advanced keyword
   tab: 'tab'         // right panel tab
@@ -48,7 +51,7 @@ export function encodeStateToURL(state) {
     params.set(PARAM_KEYS.and, state.advancedSearch.useAnd ? '1' : '0')
   }
   
-  // Map state
+  // Map state (BBOX)
   if (state.bbox) {
     const b = state.bbox
     params.set(PARAM_KEYS.bbox, [b.south, b.west, b.north, b.east].map(n => n.toFixed(6)).join(','))
@@ -99,13 +102,17 @@ export function decodeURLToState(searchParams) {
     hasData = true
   }
 
-  // BBOX
+  // BBOX (with validation)
   const bbox = params.get(PARAM_KEYS.bbox)
   if (bbox) {
     const parts = bbox.split(',').map(Number)
     if (parts.length === 4 && parts.every(n => !isNaN(n))) {
-      state.bbox = { south: parts[0], west: parts[1], north: parts[2], east: parts[3] }
-      hasData = true
+      const [south, west, north, east] = parts
+      // BBOXバリデーション
+      if (isBboxValid(south, west, north, east)) {
+        state.bbox = { south, west, north, east }
+        hasData = true
+      }
     }
   }
 
@@ -113,30 +120,81 @@ export function decodeURLToState(searchParams) {
 }
 
 /**
- * タグ条件をエンコード
- * 形式: key=value|mode 形式を ; で区切り
- * 例: "amenity=cafe:eq;shop=supermarket:ex;phone:::ne"
+ * BBOXの妥当性を検証
+ * - 緯度: -90 ≤ lat ≤ 90
+ * - 経度: -180 ≤ lon ≤ 180
+ * - south < north, west < east
+ */
+function isBboxValid(south, west, north, east) {
+  if (south < -90 || south > 90) return false
+  if (north < -90 || north > 90) return false
+  if (west < -180 || west > 180) return false
+  if (east < -180 || east > 180) return false
+  if (south >= north) return false
+  if (west >= east) return false
+  return true
+}
+
+/**
+ * タグ条件をJSONでエンコード
+ * URLSearchParamsが自動的にpercent-encodeする。
+ * 
+ * 例: [{"key":"amenity","value":"cafe","mode":"equals"},{"key":"addr:street","value":"","mode":"exists"}]
  */
 function encodeTags(tags) {
-  return tags.map(tag => {
-    const modeChar = tag.mode === 'equals' ? 'eq' : tag.mode === 'exists' ? 'ex' : 'ne'
-    const value = tag.mode === 'equals' ? (tag.value || '') : ''
-    return `${tag.key}:${value}:${modeChar}`
-  }).join(';')
+  return JSON.stringify(tags)
 }
 
 /**
  * エンコードされたタグ条件をデコード
+ * - 新形式: JSON（percent-decode済み）
+ * - 旧形式: ;と:区切り（後方互換）
  */
 function decodeTags(str) {
+  // 新形式 (JSON) の尝试
+  if (str.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(str)
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(t => t && t.key)
+          .map(t => ({
+            key: String(t.key),
+            value: t.value ? String(t.value) : '',
+            mode: t.mode === 'exists' ? 'exists' : t.mode === 'not_exists' ? 'not_exists' : 'equals'
+          }))
+      }
+    } catch {
+      // JSON解析失敗 → 旧形式にフォールバック
+    }
+  }
+
+  // 旧形式 (key:value:mode;...) のデコード
+  // 注意: addr:street のようなコロン含むキーは旧形式では正しくデコードできない
+  // この場合、最後の:でmodeを分離し、残りの:でkey/valueを分離する
   return str.split(';')
     .filter(Boolean)
     .map(part => {
-      const [key, value, modeChar] = part.split(':')
-      const mode = modeChar === 'eq' ? 'equals' : modeChar === 'ex' ? 'exists' : 'not_exists'
-      return { key, value: value || '', mode }
+      // 最後の:でmodeを分離
+      const lastColon = part.lastIndexOf(':')
+      if (lastColon === -1) return null
+      const modeChar = part.slice(lastColon + 1)
+      const mode = modeChar === 'eq' ? 'equals' : modeChar === 'ex' ? 'exists' : 'ne' === modeChar ? 'not_exists' : 'equals'
+      
+      const keyVal = part.slice(0, lastColon)
+      // key/valueの分離: 最初のコロンで分割（旧形式ではkeyにコロンを含まない想定）
+      // 新形式ではJSONを使うので、ここは旧形式のフォールバックのみ
+      const firstColon = keyVal.indexOf(':')
+      if (firstColon === -1) {
+        // keyのみ（exists/not_exists）
+        return { key: keyVal, value: '', mode }
+      }
+      const key = keyVal.slice(0, firstColon)
+      const value = keyVal.slice(firstColon + 1)
+      if (!key) return null
+      return { key, value, mode }
     })
-    .filter(t => t.key)
+    .filter(Boolean)
 }
 
 /**

@@ -59,8 +59,9 @@ export function matchName(name, results) {
   }
 
   // 候補をソート（exact > partial > similar）
+  // 注意: typeOrder['exact'] が 0 なので ?? を使用する（|| だと 0 がfalsy扱いされる）
   const typeOrder = { exact: 0, partial: 1, similar: 2 }
-  candidates.sort((a, b) => (typeOrder[a.match.type] || 3) - (typeOrder[b.match.type] || 3))
+  candidates.sort((a, b) => (typeOrder[a.match.type] ?? 3) - (typeOrder[b.match.type] ?? 3))
 
   if (candidates.length === 0) {
     return { matchType: 'none', candidates: [], matched: null }
@@ -100,34 +101,31 @@ export function batchMatch(names, results) {
 
 /**
  * 照合結果をCSVで出力
+ * - 全フィールドにエスケープを適用
+ * - ヘッダーが最初の行（標準CSVリーダー対応）
+ * - メタデータは末尾に配置
+ * - confirmed フラグで「ユーザー確認済み」と「自動選択（未確認）」を区別
  */
 export function matchResultsToCSV(matchResults) {
-  const headers = ['row', 'input_name', 'match_type', 'osm_type', 'osm_id', 'osm_url', 'lat', 'lon', 'matched_tag', 'matched_value', 'candidates_count']
-  const lines = [headers.join(',')]
+  const headers = ['row', 'input_name', 'match_type', 'confirmed', 'osm_type', 'osm_id', 'osm_url', 'lat', 'lon', 'matched_tag', 'matched_value', 'candidates_count']
+  const lines = [headers.map(csvEscape).join(',')]
 
   for (const r of matchResults) {
     if (r.matchType === 'none') {
-      lines.push([
-        String(r.index),
-        csvEscape(r.inputName),
-        '候補なし',
-        '', '', '', '', '', '', '', '0'
-      ].join(','))
+      const row = [String(r.index), r.inputName, '候補なし', '', '', '', '', '', '', '', '0']
+      lines.push(row.map(csvEscape).join(','))
     } else {
       const m = r.matched
-      lines.push([
-        String(r.index),
-        csvEscape(r.inputName),
-        r.matchType === 'exact' ? '完全一致' : r.matchType === 'partial' ? '部分一致' : '類似',
-        m.type,
-        String(m.id),
-        m.url,
-        m.lat?.toFixed(6) || '',
-        m.lon?.toFixed(6) || '',
-        m.matchedTag,
-        csvEscape(m.matchedValue),
-        String(r.candidates.length)
-      ].join(','))
+      const matchLabel = r.matchType === 'exact' ? '完全一致' : r.matchType === 'partial' ? '部分一致' : '類似'
+      const confirmed = r.confirmed ? 'はい' : 'いいえ'
+      const row = [
+        String(r.index), r.inputName, matchLabel, confirmed,
+        m.type, String(m.id), m.url,
+        m.lat != null ? m.lat.toFixed(6) : '',
+        m.lon != null ? m.lon.toFixed(6) : '',
+        m.matchedTag, m.matchedValue, String(r.candidates.length)
+      ]
+      lines.push(row.map(csvEscape).join(','))
     }
   }
 
@@ -135,16 +133,23 @@ export function matchResultsToCSV(matchResults) {
     `# 店舗名照合結果`,
     `# 日時: ${new Date().toISOString()}`,
     `# 出典: OpenStreetMap (ODbL) / © OpenStreetMap contributors`,
-    `# 注: 「候補なし」はOSMに未登録であるとは限りません（表記違いの可能性があります）`
+    `# 注: 「候補なし」はOSMに未登録であるとは限りません（表記違いの可能性があります）`,
+    `# confirmed: はい=ユーザー確認済み / いいえ=自動選択（要確認）`
   ]
 
-  return '\uFEFF' + meta.join('\n') + '\n' + lines.join('\n')
+  return '\uFEFF' + lines.join('\n') + '\n' + meta.join('\n') + '\n'
 }
 
 function csvEscape(value) {
-  let str = String(value ?? '')
-  if (/^[=+\-@]/.test(str)) str = "'" + str
-  if (/[",\n\r]/.test(str)) str = '"' + str.replace(/"/g, '""') + '"'
+  const str = String(value ?? '')
+  const needsQuote = /[",\n\r]/.test(str)
+  const needsGuard = /^[=+\-@]/.test(str)
+
+  if (needsQuote) {
+    const inner = needsGuard ? "'" + str : str
+    return '"' + inner.replace(/"/g, '""') + '"'
+  }
+  if (needsGuard) return "'" + str
   return str
 }
 

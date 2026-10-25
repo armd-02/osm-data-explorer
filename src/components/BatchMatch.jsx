@@ -1,10 +1,12 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { batchMatch, matchResultsToCSV, parseNameList } from '../utils/batchMatch'
 import { downloadFile } from '../utils/export'
 
 /**
  * 店舗名の一括照合パネル
+ * - 候補を明示的に提示し、ユーザーが選択して確認する
+ * - 未確認の自動選択はCSVにフラグで区別
  */
 function BatchMatch() {
   const { state, dispatch } = useApp()
@@ -12,6 +14,10 @@ function BatchMatch() {
   const [inputText, setInputText] = useState('')
   const [matchResults, setMatchResults] = useState(null)
   const [processing, setProcessing] = useState(false)
+  // 候補選択: { index: selectedCandidateIndex }
+  const [selections, setSelections] = useState({})
+  // 展開された行: { index: true }
+  const [expandedRows, setExpandedRows] = useState({})
 
   const handleMatch = useCallback(() => {
     const names = parseNameList(inputText)
@@ -22,13 +28,48 @@ function BatchMatch() {
     }
 
     setProcessing(true)
-    // 少し遅延させてUI更新を待つ
     setTimeout(() => {
-      const results = batchMatch(names, state.results)
-      setMatchResults(results)
+      const res = batchMatch(names, state.results)
+      setMatchResults(res)
+      setSelections({})
+      setExpandedRows({})
       setProcessing(false)
     }, 50)
   }, [inputText, results, state.results])
+
+  // 候補選択でmatchedを更新
+  const handleSelectCandidate = (rowIndex, candidateIdx) => {
+    if (!matchResults) return
+    const row = matchResults.find(r => r.index === rowIndex)
+    if (!row || !row.candidates[candidateIdx]) return
+
+    const candidate = row.candidates[candidateIdx]
+    const updated = {
+      ...row,
+      matchType: candidate.match.type,
+      confirmed: true,
+      matched: {
+        id: candidate.result.id,
+        type: candidate.result.type,
+        name: candidate.result.name,
+        lat: candidate.result.lat,
+        lon: candidate.result.lon,
+        url: `https://www.openstreetmap.org/${candidate.result.type}/${candidate.result.id}`,
+        matchType: candidate.match.type,
+        matchedTag: candidate.match.tag,
+        matchedValue: candidate.match.value
+      }
+    }
+
+    const newResults = matchResults.map(r => r.index === rowIndex ? updated : r)
+    setMatchResults(newResults)
+    setSelections({ ...selections, [rowIndex]: candidateIdx })
+    setExpandedRows({ ...expandedRows, [rowIndex]: false })
+  }
+
+  const toggleExpand = (rowIndex) => {
+    setExpandedRows(prev => ({ ...prev, [rowIndex]: !prev[rowIndex] }))
+  }
 
   const handleDownload = () => {
     if (!matchResults) return
@@ -50,6 +91,7 @@ function BatchMatch() {
     partial: matchResults.filter(r => r.matchType === 'partial').length,
     similar: matchResults.filter(r => r.matchType === 'similar').length,
     none: matchResults.filter(r => r.matchType === 'none').length,
+    confirmed: matchResults.filter(r => r.confirmed).length,
     total: matchResults.length
   } : null
 
@@ -96,6 +138,7 @@ function BatchMatch() {
           <span className="text-amber-600">部分: {summary.partial}</span>
           <span className="text-blue-600">類似: {summary.similar}</span>
           <span className="text-red-500">候補なし: {summary.none}</span>
+          <span className="text-emerald-600">✓確認: {summary.confirmed}</span>
           <button
             onClick={handleDownload}
             className="ml-auto px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] rounded font-medium"
@@ -120,47 +163,110 @@ function BatchMatch() {
             </thead>
             <tbody>
               {matchResults.map(r => (
-                <tr key={r.index} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="px-2 py-1 text-slate-400">{r.index}</td>
-                  <td className="px-2 py-1 text-slate-700 max-w-[120px] truncate">{r.inputName}</td>
-                  <td className="px-2 py-1">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                      r.matchType === 'exact' ? 'bg-green-100 text-green-700'
-                      : r.matchType === 'partial' ? 'bg-amber-100 text-amber-700'
-                      : r.matchType === 'similar' ? 'bg-blue-100 text-blue-700'
-                      : 'bg-red-50 text-red-500'
-                    }`}>
-                      {r.matchType === 'exact' ? '完全' : r.matchType === 'partial' ? '部分' : r.matchType === 'similar' ? '類似' : 'なし'}
-                    </span>
-                    {r.matched && (
-                      <span className="text-slate-500 ml-1">{r.matched.name || r.matched.matchedValue}</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1">
-                    {r.matched ? (
-                      <a
-                        href={r.matched.url}
-                        target="_blank"
-                        rel="noopener"
-                        className="text-primary-600 hover:text-primary-800 font-mono text-[10px]"
-                      >
-                        {r.matched.type}/{r.matched.id}
-                      </a>
-                    ) : (
-                      <span className="text-slate-300">-</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1 text-right text-slate-500">
-                    {r.candidates.length > 0 ? `${r.candidates.length}件` : '-'}
-                  </td>
-                </tr>
+                <React.Fragment key={r.index}>
+                  <tr className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="px-2 py-1 text-slate-400">{r.index}</td>
+                    <td className="px-2 py-1 text-slate-700 max-w-[100px] truncate">{r.inputName}</td>
+                    <td className="px-2 py-1">
+                      <div className="flex items-center gap-1">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          r.matchType === 'exact' ? 'bg-green-100 text-green-700'
+                          : r.matchType === 'partial' ? 'bg-amber-100 text-amber-700'
+                          : r.matchType === 'similar' ? 'bg-blue-100 text-blue-700'
+                          : 'bg-red-50 text-red-500'
+                        }`}>
+                          {r.matchType === 'exact' ? '完全' : r.matchType === 'partial' ? '部分' : r.matchType === 'similar' ? '類似' : 'なし'}
+                        </span>
+                        {r.confirmed && <span className="text-[9px] text-emerald-600" title="ユーザー確認済み">✓</span>}
+                        {r.matched && (
+                          <span className="text-slate-500 truncate max-w-[80px]">{r.matched.name || r.matched.matchedValue}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-1">
+                      {r.matched ? (
+                        <a
+                          href={r.matched.url}
+                          target="_blank"
+                          rel="noopener"
+                          className="text-primary-600 hover:text-primary-800 font-mono text-[10px]"
+                        >
+                          {r.matched.type}/{r.matched.id}
+                        </a>
+                      ) : (
+                        <span className="text-slate-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-right">
+                      {r.candidates.length > 1 ? (
+                        <button
+                          onClick={() => toggleExpand(r.index)}
+                          className="text-[10px] text-primary-600 hover:text-primary-800 font-medium"
+                          title="候補を選択"
+                        >
+                          {expandedRows[r.index] ? '▲ 閉じる' : `▼ ${r.candidates.length}件`}
+                        </button>
+                      ) : (
+                        <span className="text-slate-500 text-[10px]">{r.candidates.length > 0 ? '1件' : '-'}</span>
+                      )}
+                    </td>
+                  </tr>
+
+                  {/* 候補選択パネル（複数候補ありで展開時） */}
+                  {expandedRows[r.index] && r.candidates.length > 1 && (
+                    <tr className="border-t border-slate-100 bg-blue-50/50">
+                      <td colSpan={5} className="px-3 py-2">
+                        <p className="text-[10px] text-slate-600 mb-1.5 font-medium">
+                          候補を選択してください（入力名: 「{r.inputName}」）
+                        </p>
+                        <div className="space-y-1">
+                          {r.candidates.map((c, ci) => (
+                            <div key={ci} className="flex items-center gap-2 text-[10px]">
+                              <span className={`px-1 py-0.5 rounded font-medium ${
+                                c.match.type === 'exact' ? 'bg-green-100 text-green-700'
+                                : c.match.type === 'partial' ? 'bg-amber-100 text-amber-700'
+                                : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {c.match.type === 'exact' ? '完全' : c.match.type === 'partial' ? '部分' : '類似'}
+                              </span>
+                              <span className="text-slate-700 flex-1 truncate">
+                                {c.result.name || c.match.value}
+                                <span className="text-slate-400 ml-1">({c.match.tag})</span>
+                              </span>
+                              <a
+                                href={`https://www.openstreetmap.org/${c.result.type}/${c.result.id}`}
+                                target="_blank"
+                                rel="noopener"
+                                className="text-primary-600 font-mono"
+                              >
+                                {c.result.type}/{c.result.id}
+                              </a>
+                              <button
+                                onClick={() => handleSelectCandidate(r.index, ci)}
+                                className="px-2 py-0.5 bg-primary-600 hover:bg-primary-700 text-white rounded text-[10px]"
+                              >
+                                ✓ 選択
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
-          
+
           {summary?.none > 0 && (
             <p className="px-3 py-2 text-[10px] text-amber-600 bg-amber-50">
               ⚠️ 「候補なし」はOSMに未登録であるとは限りません。表記の違い（例: 「薬局」vs「ドラッグストア」）が原因のこともあります。
+            </p>
+          )}
+          {summary && summary.confirmed < summary.total - summary.none && (
+            <p className="px-3 py-1.5 text-[10px] text-slate-500 bg-slate-50">
+              ℹ️ 未確認の照合（自動選択）はCSVに「confirmed: いいえ」として出力されます。
+              複数候補がある行は「▼」をクリックして候補を選択してください。
             </p>
           )}
         </div>

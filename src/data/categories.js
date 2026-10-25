@@ -6,8 +6,10 @@
  * - label: 日本語表示名
  * - tags: タグ条件の配列
  *   - 各タグは { key, values } 
- *   - values が配列の場合 → OR（同一キーの複数値）
- *   - 複数タグオブジェクト → AND
+ *   - values が配列の場合 → 同一キーの複数値を OR
+ * - logic: 複数tags間をどう組み合わせるか
+ *   - 'or'  : いずれかのtagsが一致すればOK（デフォルト）
+ *   - 'and' : 全てのtagsが一致する場合のみ
  * - description: 対象の説明（任意）
  * 
  * 新規カテゴリを追加する場合:
@@ -20,18 +22,21 @@ export const CATEGORIES = [
     id: 'cafe',
     label: 'カフェ',
     tags: [{ key: 'amenity', values: ['cafe'] }],
+    logic: 'or',
     description: 'コーヒーショップ・カフェ'
   },
   {
     id: 'restaurant',
     label: 'レストラン',
     tags: [{ key: 'amenity', values: ['restaurant'] }],
+    logic: 'or',
     description: 'レストラン・食堂'
   },
   {
     id: 'food_drink',
     label: '飲食店',
     tags: [{ key: 'amenity', values: ['cafe', 'restaurant', 'fast_food', 'bar', 'pub', 'izakaya', 'sushi', 'food_court'] }],
+    logic: 'or',
     description: 'カフェ・レストラン・ファストフード・バー・居酒屋など'
   },
   {
@@ -41,12 +46,14 @@ export const CATEGORIES = [
       { key: 'shop', values: ['convenience', 'supermarket'] },
       { key: 'amenity', values: ['convenience'] }
     ],
+    logic: 'or',
     description: 'コンビニエンスストア・スーパーマーケット'
   },
   {
     id: 'retail',
     label: '小売店',
-    tags: [{ key: 'shop', values: ['clothes', 'shoes', 'department_store', 'gift', 'stationery', 'convenience', 'supermarket', 'bakery', 'confectionery', 'butcher', 'greengrocer', 'florist', 'jewelry', 'hairdresser', 'beauty', 'car', 'motorcycle', 'bicycle', 'sports', 'toys', 'books', 'music', 'newsagent', 'alcohol', 'tobacco', 'variety_store', 'hardware', 'furniture', 'carpet', 'diary', 'gift', 'leather', 'optician', 'tattoo', 'car_repair', 'pet', 'office_supplies', 'outdoor', 'computer', 'hifi', 'jewelry', 'charity', 'composite', 'covered_market'] }],
+    tags: [{ key: 'shop', values: ['clothes', 'shoes', 'department_store', 'gift', 'stationery', 'convenience', 'supermarket', 'bakery', 'confectionery', 'butcher', 'greengrocer', 'florist', 'jewelry', 'hairdresser', 'beauty', 'car', 'motorcycle', 'bicycle', 'sports', 'toys', 'books', 'music', 'newsagent', 'alcohol', 'tobacco', 'variety_store', 'hardware', 'furniture', 'carpet', 'diary', 'leather', 'optician', 'tattoo', 'car_repair', 'pet', 'office_supplies', 'outdoor', 'computer', 'hifi', 'charity', 'composite', 'covered_market'] }],
+    logic: 'or',
     description: '各種小売店舗'
   },
   {
@@ -56,12 +63,14 @@ export const CATEGORIES = [
       { key: 'amenity', values: ['pharmacy'] },
       { key: 'shop', values: ['drugstore'] }
     ],
+    logic: 'or',
     description: '薬局・ドラッグストア'
   },
   {
     id: 'hospital',
     label: '病院・クリニック',
     tags: [{ key: 'amenity', values: ['hospital', 'clinic', 'doctors', 'dentist'] }],
+    logic: 'or',
     description: '病院・クリニック・歯科'
   },
   {
@@ -71,6 +80,7 @@ export const CATEGORIES = [
       { key: 'amenity', values: ['townhall', 'post_office', 'police', 'fire_station', 'library', 'community_centre', 'recycling', 'shelter'] },
       { key: 'office', values: ['government', 'municipality'] }
     ],
+    logic: 'or',
     description: '役所・郵便局・警察・消防・図書館など'
   },
   {
@@ -80,6 +90,7 @@ export const CATEGORIES = [
       { key: 'leisure', values: ['park', 'playground', 'garden', 'pitch'] },
       { key: 'amenity', values: ['plaza'] }
     ],
+    logic: 'or',
     description: '公園・遊具・庭園・広場'
   },
   {
@@ -89,6 +100,7 @@ export const CATEGORIES = [
       { key: 'amenity', values: ['school', 'kindergarten', 'university', 'college', 'language_school'] },
       { key: 'leisure', values: ['common'] }
     ],
+    logic: 'or',
     description: '幼稚園・小学校・中学校・高校・大学'
   },
   {
@@ -99,6 +111,7 @@ export const CATEGORIES = [
       { key: 'highway', values: ['bus_stop', 'platform'] },
       { key: 'amenity', values: ['fuel', 'parking'] }
     ],
+    logic: 'or',
     description: '駅・バス停・ガソリンスタンド・駐車場'
   },
   {
@@ -108,6 +121,7 @@ export const CATEGORIES = [
       { key: 'tourism', values: ['hotel', 'hostel', 'motel', 'guest_house', 'apartment'] },
       { key: 'building', values: ['hotel'] }
     ],
+    logic: 'or',
     description: 'ホテル・ゲストハウス・旅館'
   },
   {
@@ -116,12 +130,14 @@ export const CATEGORIES = [
     tags: [
       { key: 'amenity', values: ['bank', 'atm'] }
     ],
+    logic: 'or',
     description: '銀行・現金自動預払機'
   },
   {
     id: 'toilets',
     label: 'トイレ',
     tags: [{ key: 'amenity', values: ['toilets'] }],
+    logic: 'or',
     description: '公共トイレ・トイレ'
   },
   {
@@ -131,6 +147,7 @@ export const CATEGORIES = [
       { key: 'amenity', values: ['place_of_worship'] },
       { key: 'building', values: ['temple', 'shrine', 'church'] }
     ],
+    logic: 'or',
     description: '寺・神社・教会'
   },
   {
@@ -139,12 +156,14 @@ export const CATEGORIES = [
     tags: [
       { key: 'leisure', values: ['sports_centre', 'stadium', 'swimming_pool', 'pitch', 'golf_course', 'tennis_court', 'basketball_court', 'volleyball_court'] }
     ],
+    logic: 'or',
     description: 'スポーツセンター・プール・球場・コート'
   },
   {
     id: 'museum',
     label: '美術館・博物館',
     tags: [{ key: 'tourism', values: ['museum', 'art_gallery', 'viewpoint'] }],
+    logic: 'or',
     description: '博物館・美術館・展望台'
   },
   {
@@ -154,18 +173,21 @@ export const CATEGORIES = [
       { key: 'cuisine', values: ['ramen'] },
       { key: 'amenity', values: ['restaurant', 'fast_food'] }
     ],
+    logic: 'and',
     description: 'ラーメン店（cuisine=ramen）'
   },
   {
     id: 'supermarket',
     label: 'スーパーマーケット',
     tags: [{ key: 'shop', values: ['supermarket'] }],
+    logic: 'or',
     description: 'スーパーマーケット'
   },
   {
     id: 'gas_station',
     label: 'ガソリンスタンド',
     tags: [{ key: 'amenity', values: ['fuel'] }],
+    logic: 'or',
     description: 'ガソリンスタンド・EV充電站'
   }
 ]
@@ -178,27 +200,45 @@ export function getCategoryById(id) {
 }
 
 /**
- * カテゴリのタグ条件をOverpassクエリ用の形式に変換
- * - 同一キーの複数values → OR: (key=v1 OR key=v2)
- * - 複数タグオブジェクト → AND
+ * カテゴリのタグ条件をOverpassクエリ用のフィルタ文字列に変換
  * 
+ * logic='or': 各tag条件をunion（;区切り）で繋ぐ → いずれか一致
+ * logic='and': 各tag条件を連結フィルタで繋ぐ → 全て一致
+ *
+ * 同一キーの複数値は正規表現 key~"^(v1|v2|...)$" で表現する
+ *
  * @param {object} category - カテゴリオブジェクト
- * @returns {string} Overpassクエリのタグフィルタ部分
+ * @returns {object} { unionFilters: string[], andFilter: string }
+ *   - logic='or'  → unionFilters に各条件が入る（andFilterは空文字列）
+ *   - logic='and' → andFilter に連結フィルタが入る（unionFiltersは空）
  */
 export function categoryToQueryFilter(category) {
-  if (!category || !category.tags || category.tags.length === 0) return ''
+  if (!category || !category.tags || category.tags.length === 0) {
+    return { unionFilters: [], andFilter: '' }
+  }
 
-  return category.tags.map((tag) => {
+  const logic = category.logic || 'or'
+
+  // 各tag条件をOverpass QLフィルタに変換
+  const filters = category.tags.map((tag) => {
     const safeKey = escapeStr(tag.key)
     if (tag.values && tag.values.length > 1) {
-      // 複数値 → OR条件
-      const orConditions = tag.values.map((v) => `${safeKey}=${escapeStr(v)}`)
-      return `(${orConditions.join(' ')})`
+      // 複数値 → 正規表現でOR
+      const escaped = tag.values.map((v) => escapeRegex(v))
+      return `${safeKey}~"^{(${escaped.join('|')})}$"`
     } else if (tag.values && tag.values.length === 1) {
-      return `${safeKey}=${escapeStr(tag.values[0])}`
+      return `${safeKey}=${quoteValue(tag.values[0])}`
     }
     return `${safeKey}=*`
-  }).join(' ')
+  })
+
+  if (logic === 'and') {
+    // AND: 複数フィルタを連結 [cond1][cond2]
+    return { unionFilters: [], andFilter: filters.map(f => `[${f}]`).join('') }
+  }
+
+  // OR: 各フィルタを個別に持つ
+  return { unionFilters: filters.map(f => `[${f}]`), andFilter: '' }
 }
 
 /**
@@ -206,6 +246,7 @@ export function categoryToQueryFilter(category) {
  */
 export function categoryToReadableTags(category) {
   if (!category || !category.tags) return ''
+  const joiner = (category.logic === 'and') ? ' AND ' : ' OR '
   return category.tags.map((tag) => {
     if (tag.values && tag.values.length > 1) {
       return `${tag.key} ∈ {${tag.values.join(', ')}}`
@@ -213,9 +254,34 @@ export function categoryToReadableTags(category) {
       return `${tag.key}=${tag.values[0]}`
     }
     return `${tag.key} (存在)`
-  }).join(' AND ')
+  }).join(joiner)
 }
 
+// ---------- ヘルパー ----------
+
+/**
+ * Overpass QLのキーをエスケープ
+ * キーは通常 alphanum + : + _ のみだが、安全のため特殊文字をエスケープ
+ */
 function escapeStr(str) {
-  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+/**
+ * 正規表現内で特殊な文字をエスケープ
+ */
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * 値を適切に引用符で囲む（特殊文字を含む場合のみ）
+ */
+function quoteValue(str) {
+  const s = String(str)
+  // 特殊文字を含む場合はダブルクォートで囲む
+  if (/[",\\\s[\](){}]/.test(s)) {
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  }
+  return s
 }
