@@ -199,12 +199,12 @@ function MapView() {
     }
   }, [results])
 
-  // Highlight active result
+  // Highlight active result（composite key: type/id）
   useEffect(() => {
     if (!leafletRef.current || !activeResultId) return
     const map = leafletRef.current
-    const result = results.find((r) => r.id === activeResultId)
-    if (result && result.lat && result.lon) {
+    const result = results.find((r) => `${r.type}/${r.id}` === activeResultId)
+    if (result && result.lat != null && result.lon != null) {
       map.panTo([result.lat, result.lon], { animate: true })
     }
   }, [activeResultId, results])

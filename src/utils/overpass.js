@@ -84,7 +84,7 @@ export function buildSimpleQuery(bbox, category, keyword) {
   const catFilter = buildCategoryFilter(category)
 
   let body
-  if (catFilter && (catFilter.unionFilters.length > 0 || catFilter.andFilter)) {
+  if (catFilter && (catFilter.unionFilters.length > 0 || (catFilter.andFilters && catFilter.andFilters.length > 0))) {
     body = buildFilterBody(bboxStr, catFilter)
   } else {
     // カテゴリなし: 全要素
@@ -140,14 +140,15 @@ export function buildAdvancedQuery(bbox, tags, keyword, useAnd) {
  */
 function buildFilterBody(bboxStr, catFilter) {
   if (catFilter.unionFilters.length > 0) {
-    // OR: 各フィルタをunionの別ブランチに
+    // OR: 各フィルタをunionの別ブランチに（角括弧をここで追加）
     return catFilter.unionFilters
       .flatMap(f => `  node[${f}](${bboxStr});\n  way[${f}](${bboxStr});\n  relation[${f}](${bboxStr});`)
       .join('\n')
   }
-  if (catFilter.andFilter) {
-    // AND: 連結フィルタ
-    return `  node${catFilter.andFilter}(${bboxStr});\n  way${catFilter.andFilter}(${bboxStr});\n  relation${catFilter.andFilter}(${bboxStr});`
+  if (catFilter.andFilters && catFilter.andFilters.length > 0) {
+    // AND: 全フィルタを連結 [f1][f2][f3]
+    const chained = catFilter.andFilters.map(f => `[${f}]`).join('')
+    return `  node${chained}(${bboxStr});\n  way${chained}(${bboxStr});\n  relation${chained}(${bboxStr});`
   }
   return `  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});`
 }

@@ -2,7 +2,8 @@
  * CSVエクスポートの回帰テスト（Issue #20）
  * - 全フィールドにエスケープが適用される
  * - ヘッダーが最初の行
- * - メタデータが末尾
+ * - メタデータは規則的なデータ列（#行を混入させない）
+ * - 全行が同一列幅
  * - クォート判定が注入ガードより先行
  */
 import { describe, it, expect } from 'vitest'
@@ -14,35 +15,60 @@ const mockResults = [
   { type: 'node', id: 3, name: '=SUM(A1:A10)', lat: 35.70, lon: 139.79, tags: { name: '=SUM(A1:A10)' } }
 ]
 
+/** CSV行のフィールド数を数える（簡易パース） */
+function countFields(line) {
+  let count = 1
+  let inQuotes = false
+  for (const ch of line) {
+    if (ch === '"') inQuotes = !inQuotes
+    else if (ch === ',' && !inQuotes) count++
+  }
+  return count
+}
+
 describe('toCSV（Issue #20）', () => {
   it('ヘッダーが最初の行に出力される', () => {
     const csv = toCSV(mockResults, { fetchedAt: '2026-01-01' })
     const lines = csv.replace('\uFEFF', '').split('\n')
-    // 最初の行がヘッダー
     expect(lines[0]).toContain('name')
     expect(lines[0]).toContain('type')
     expect(lines[0]).toContain('osm_id')
-    // 2番目の行がデータ
     expect(lines[1]).toContain('テストカフェ')
   })
 
-  it('メタデータが末尾に配置される', () => {
+  it('# メタデータ行を含まない（簡易CSV互換）', () => {
     const csv = toCSV(mockResults, { fetchedAt: '2026-01-01' })
-    const lines = csv.replace('\uFEFF', '').split('\n')
-    // # メタが最後の数行
-    expect(lines[lines.length - 3]).toContain('#')
-    expect(lines[lines.length - 2]).toContain('#')
+    const lines = csv.replace('\uFEFF', '').split('\n').filter(l => l.trim())
+    for (const line of lines) {
+      expect(line, `行が#で始まる: ${line}`).not.toMatch(/^#/)
+    }
+  })
+
+  it('全行が同一列幅（ヘッダーとデータ行のフィールド数が一致）', () => {
+    const csv = toCSV(mockResults, { fetchedAt: '2026-01-01' })
+    const lines = csv.replace('\uFEFF', '').split('\n').filter(l => l.trim())
+    const headerFields = countFields(lines[0])
+    for (let i = 1; i < lines.length; i++) {
+      expect(countFields(lines[i]), `行${i+1}の列数が一致しない`).toBe(headerFields)
+    }
+  })
+
+  it('メタデータがデータ列として出力される（fetched_at, source）', () => {
+    const csv = toCSV(mockResults, { fetchedAt: '2026-01-01' })
+    const lines = csv.replace('\uFEFF', '').split('\n').filter(l => l.trim())
+    expect(lines[0]).toContain('fetched_at')
+    expect(lines[0]).toContain('source')
+    // データ行に取得日時が含まれる
+    expect(lines[1]).toContain('2026-01-01')
   })
 
   it('カンマを含む値はクォートで囲まれる', () => {
     const csv = toCSV(mockResults, {})
-    // "カフェ, 山本" はクォートで囲まれる
     expect(csv).toContain('"カフェ, 山本"')
   })
 
   it('= で始まる値は \' 前置き（数式注入対策）', () => {
     const csv = toCSV(mockResults, {})
-    // 'SUM(A1:A10) のように ' が前置きされる
     expect(csv).toContain("'=SUM(A1:A10)")
   })
 
@@ -51,8 +77,6 @@ describe('toCSV（Issue #20）', () => {
       { type: 'node', id: 99, name: '=A1,B2', lat: 35.0, lon: 139.0, tags: {} }
     ]
     const csv = toCSV(results, {})
-    // カンマを含むのでクォートで囲まれ、かつ = で始まるので ' が内部に入る
-    // 結果: "'=A1,B2"
     expect(csv).toContain("\"'=A1,B2\"")
   })
 
@@ -62,9 +86,14 @@ describe('toCSV（Issue #20）', () => {
     ]
     const csv = toCSV(results, {})
     const lines = csv.replace('\uFEFF', '').split('\n')
-    // データ行に null が含まれない（空文字列）
     const dataLine = lines.find(l => l.includes('テスト'))
     expect(dataLine).not.toContain('null')
+  })
+
+  it('osm_idがtype/id形式で出力される（Issue #24）', () => {
+    const csv = toCSV(mockResults, { fetchedAt: '2026-01-01' })
+    expect(csv).toContain('node/1')
+    expect(csv).toContain('way/2')
   })
 
   it('UTF-8 BOM付きで出力される', () => {
@@ -78,7 +107,6 @@ describe('toGeoJSON（Issue #20）', () => {
     const geojson = JSON.parse(toGeoJSON(mockResults, {}))
     const wayFeature = geojson.features.find(f => f.properties.osm_type === 'way')
     expect(wayFeature.properties.geometry_note).toContain('center point only')
-    
     const nodeFeature = geojson.features.find(f => f.properties.osm_type === 'node')
     expect(nodeFeature.properties.geometry_note).toBeNull()
   })

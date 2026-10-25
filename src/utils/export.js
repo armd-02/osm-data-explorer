@@ -14,7 +14,11 @@ export function toCSV(results, meta = {}) {
 
   // どのタグ列を含むか（結果中出现したもののみ）
   const activeTags = MAIN_TAGS.filter(tag => tag !== 'name' && results.some(r => r.tags?.[tag]))
-  const allHeaders = ['name', 'type', 'osm_id', 'osm_url', 'lat', 'lon', ...activeTags]
+  // メタデータは規則的なデータ列として出力（#行を混入させない）
+  const allHeaders = ['name', 'type', 'osm_id', 'osm_url', 'lat', 'lon', ...activeTags, 'fetched_at', 'source']
+
+  const fetchedAt = meta.fetchedAt || new Date().toISOString()
+  const source = 'OpenStreetMap (ODbL) / Overpass API'
 
   const lines = [allHeaders.map(h => csvEscape(h)).join(',')]
 
@@ -22,27 +26,20 @@ export function toCSV(results, meta = {}) {
     const row = [
       r.name || '',
       r.type,
-      String(r.id),
+      `${r.type}/${r.id}`,
       `https://www.openstreetmap.org/${r.type}/${r.id}`,
       r.lat != null ? r.lat.toFixed(6) : '',
       r.lon != null ? r.lon.toFixed(6) : '',
-      ...activeTags.map(tag => r.tags?.[tag] || '')
+      ...activeTags.map(tag => r.tags?.[tag] || ''),
+      fetchedAt,
+      source
     ]
     // 全フィールドにエスケープを適用
     lines.push(row.map(csvEscape).join(','))
   }
 
-  // メタデータは末尾に配置（標準CSVリーダーがヘッダーを正常に認識できるように）
-  const metaLines = [
-    `# OSM Data Explorer export`,
-    `# 取得日時: ${meta.fetchedAt || new Date().toISOString()}`,
-    `# 出典: OpenStreetMap (ODbL) / Overpass API`,
-    `# 件数: ${results.length}`,
-    `# © OpenStreetMap contributors`
-  ]
-
-  // BOM + ヘッダー+データ + メタ（末尾）
-  return '\uFEFF' + lines.join('\n') + '\n' + metaLines.join('\n') + '\n'
+  // BOM + ヘッダー + 同一列幅のデータ行のみ
+  return '\uFEFF' + lines.join('\n') + '\n'
 }
 
 /**

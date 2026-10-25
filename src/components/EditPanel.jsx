@@ -41,7 +41,7 @@ function EditPanel() {
 
   // Note文案のプレフィル
   const facilityName = activeResultId
-    ? results.find(r => r.id === activeResultId)?.name
+    ? results.find(r => `${r.type}/${r.id}` === activeResultId)?.name
     : null
 
   const defaultNote = facilityName

@@ -100,44 +100,35 @@ export function batchMatch(names, results) {
 }
 
 /**
- * 照合結果をCSVで出力
- * - 全フィールドにエスケープを適用
+ * 照合結果をCSVで出力（Issue #21対応）
+ * - # メタデータ行を一切含めない（CSVパーサー互換性）
  * - ヘッダーが最初の行（標準CSVリーダー対応）
- * - メタデータは末尾に配置
- * - confirmed フラグで「ユーザー確認済み」と「自動選択（未確認）」を区別
+ * - 全行が同一列幅（Excel・pandas・標準CSVリーダーで確実に読める）
+ * - status 列で「確認済み」/「要確認」/「候補なし」を区別
+ * - osm_id は type/id 形式（例: node/12345）
  */
 export function matchResultsToCSV(matchResults) {
-  const headers = ['row', 'input_name', 'match_type', 'confirmed', 'osm_type', 'osm_id', 'osm_url', 'lat', 'lon', 'matched_tag', 'matched_value', 'candidates_count']
+  const headers = ['row', 'input_name', 'status', 'match_type', 'osm_type', 'osm_id', 'osm_url', 'matched_name', 'candidates_count']
   const lines = [headers.map(csvEscape).join(',')]
 
   for (const r of matchResults) {
     if (r.matchType === 'none') {
-      const row = [String(r.index), r.inputName, '候補なし', '', '', '', '', '', '', '', '0']
+      const row = [String(r.index), r.inputName, '候補なし', '', '', '', '', '', '0']
       lines.push(row.map(csvEscape).join(','))
     } else {
       const m = r.matched
+      const status = r.confirmed ? '確認済み' : '要確認'
       const matchLabel = r.matchType === 'exact' ? '完全一致' : r.matchType === 'partial' ? '部分一致' : '類似'
-      const confirmed = r.confirmed ? 'はい' : 'いいえ'
       const row = [
-        String(r.index), r.inputName, matchLabel, confirmed,
-        m.type, String(m.id), m.url,
-        m.lat != null ? m.lat.toFixed(6) : '',
-        m.lon != null ? m.lon.toFixed(6) : '',
-        m.matchedTag, m.matchedValue, String(r.candidates.length)
+        String(r.index), r.inputName, status,
+        matchLabel, m.type, `${m.type}/${m.id}`, m.url,
+        m.name || '', String(r.candidates.length)
       ]
       lines.push(row.map(csvEscape).join(','))
     }
   }
 
-  const meta = [
-    `# 店舗名照合結果`,
-    `# 日時: ${new Date().toISOString()}`,
-    `# 出典: OpenStreetMap (ODbL) / © OpenStreetMap contributors`,
-    `# 注: 「候補なし」はOSMに未登録であるとは限りません（表記違いの可能性があります）`,
-    `# confirmed: はい=ユーザー確認済み / いいえ=自動選択（要確認）`
-  ]
-
-  return '\uFEFF' + lines.join('\n') + '\n' + meta.join('\n') + '\n'
+  return '\uFEFF' + lines.join('\n') + '\n'
 }
 
 function csvEscape(value) {
@@ -154,21 +145,138 @@ function csvEscape(value) {
 }
 
 /**
+ * RFC4180準拠のCSV/TSVパーサー（状態機械）
+ * クォート内のデリミター・改行を保持、"" → " のエスケープ処理
+ * @returns {Array<Array<string>>}
+ */
+function parseDelimited(text, delimiter) {
+  const rows = []
+  let row = []
+  let field = ''
+  let inQuotes = false
+  let i = 0
+
+  while (i < text.length) {
+    const ch = text[i]
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          field += '"' // "" → "
+          i += 2
+        } else {
+          inQuotes = false
+          i++
+        }
+      } else {
+        field += ch // クォート内なので改行もそのまま保持
+        i++
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true
+        i++
+      } else if (ch === delimiter) {
+        row.push(field)
+        field = ''
+        i++
+      } else if (ch === '\r' || ch === '\n') {
+        if (ch === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++
+        row.push(field)
+        field = ''
+        if (row.length > 1 || (row.length === 1 && row[0].trim() !== '')) {
+          rows.push(row)
+        }
+        row = []
+        i++
+      } else {
+        field += ch
+        i++
+      }
+    }
+  }
+
+  row.push(field)
+  if (row.length > 1 || (row.length === 1 && row[0].trim() !== '')) {
+    rows.push(row)
+  }
+
+  return rows
+}
+
+/**
+ * 解析結果から区切り文字を決定
+ * 2列以上の行がある → そのデリミターが有効
+ */
+function detectDelimiterFromRows(rows) {
+  return rows.some(r => r.length > 1)
+}
+
+/**
+ * ヘッダー行の検出
+ * 2以上のセルが典型的なヘッダーキーワードを含む場合、ヘッダーとみなす
+ */
+function isHeaderRow(row) {
+  if (row.length === 0) return false
+  const keywords = ['name', 'shop', 'store', '店', '施設', '住所', 'addr', 'address', 'phone', 'tel', 'lat', 'lon', 'lng', 'id', 'osm', 'city']
+  const lowerCells = row.map(c => c.toLowerCase().trim())
+  const matchCount = lowerCells.filter(c => keywords.some(k => c.includes(k))).length
+  // 1列: セル自体がヘッダーキーワードと完全一致
+  if (row.length === 1) return keywords.includes(lowerCells[0])
+  // 2列以上: 2以上のセルがキーワードを含む
+  return matchCount >= 2
+}
+
+/**
  * テキストから名称リストを解析
- * 1行1名称（カンマ区切りも対応）
+ * - RFC4180準拠のCSV/TSVをパース（クォート・改行・エスケープ対応）
+ * - ヘッダー行を自動検出・スキップ
+ * - 区切りなしの場合: 1行1名称
+ * - 区切りありの場合: 最初の列を名称として使用
  */
 export function parseNameList(text) {
   if (!text || !text.trim()) return []
-  
-  // 1行ずつ分割
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
-  
-  // CSV形式（カンマ区切り）の検出
-  const firstLine = lines[0] || ''
-  if (firstLine.includes(',') && lines.length > 1) {
-    // 複数カラムの場合、最初の列を名称として使用
-    return lines.map(l => l.split(',')[0].trim()).filter(Boolean)
+
+  // クォートがある場合は必ずパーサーを使用（クォート内改行・エスケープを正しく処理）
+  const hasQuotes = text.includes('"')
+
+  if (hasQuotes) {
+    // タブ → カンマ の順でパースを試行
+    const tabRows = parseDelimited(text, '\t')
+    if (detectDelimiterFromRows(tabRows)) {
+      return extractNames(tabRows)
+    }
+    const commaRows = parseDelimited(text, ',')
+    if (detectDelimiterFromRows(commaRows)) {
+      return extractNames(commaRows)
+    }
+    // クォートありだが区切りなし: パーサー結果（1列）を使用
+    // （カンマパース結果が最も適切。タブパース結果でも同様に1列）
+    const rows = commaRows.length >= tabRows.length ? commaRows : tabRows
+    const dataRows = isHeaderRow(rows[0]) ? rows.slice(1) : rows
+    return dataRows
+      .map(row => row[0]?.trim())
+      .filter(name => name && name.length > 0)
   }
-  
-  return lines
+
+  // クォートなし: 簡易検出
+  const tabRows = parseDelimited(text, '\t')
+  if (detectDelimiterFromRows(tabRows)) {
+    return extractNames(tabRows)
+  }
+
+  const commaRows = parseDelimited(text, ',')
+  if (detectDelimiterFromRows(commaRows)) {
+    return extractNames(commaRows)
+  }
+
+  // 区切りなし: 1行1名称
+  return text.split(/\r\n|\r|\n/).map(l => l.trim()).filter(Boolean)
+}
+
+function extractNames(rows) {
+  const dataRows = isHeaderRow(rows[0]) ? rows.slice(1) : rows
+  return dataRows
+    .map(row => row[0]?.trim())
+    .filter(name => name && name.length > 0)
 }

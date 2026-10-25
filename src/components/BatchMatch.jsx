@@ -37,7 +37,7 @@ function BatchMatch() {
     }, 50)
   }, [inputText, results, state.results])
 
-  // 候補選択でmatchedを更新
+  // 候補選択でmatchedを更新（確認済みにする）
   const handleSelectCandidate = (rowIndex, candidateIdx) => {
     if (!matchResults) return
     const row = matchResults.find(r => r.index === rowIndex)
@@ -65,6 +65,15 @@ function BatchMatch() {
     setMatchResults(newResults)
     setSelections({ ...selections, [rowIndex]: candidateIdx })
     setExpandedRows({ ...expandedRows, [rowIndex]: false })
+  }
+
+  // 確認取り消し（confirmed: true → false）
+  const handleUnconfirm = (rowIndex) => {
+    if (!matchResults) return
+    const newResults = matchResults.map(r =>
+      r.index === rowIndex ? { ...r, confirmed: false } : r
+    )
+    setMatchResults(newResults)
   }
 
   const toggleExpand = (rowIndex) => {
@@ -177,7 +186,7 @@ function BatchMatch() {
                         }`}>
                           {r.matchType === 'exact' ? '完全' : r.matchType === 'partial' ? '部分' : r.matchType === 'similar' ? '類似' : 'なし'}
                         </span>
-                        {r.confirmed && <span className="text-[9px] text-emerald-600" title="ユーザー確認済み">✓</span>}
+                        {r.confirmed && <span className="text-[9px] text-emerald-600" title="確認済み">✓</span>}
                         {r.matched && (
                           <span className="text-slate-500 truncate max-w-[80px]">{r.matched.name || r.matched.matchedValue}</span>
                         )}
@@ -198,16 +207,37 @@ function BatchMatch() {
                       )}
                     </td>
                     <td className="px-2 py-1 text-right">
-                      {r.candidates.length > 1 ? (
-                        <button
-                          onClick={() => toggleExpand(r.index)}
-                          className="text-[10px] text-primary-600 hover:text-primary-800 font-medium"
-                          title="候補を選択"
-                        >
-                          {expandedRows[r.index] ? '▲ 閉じる' : `▼ ${r.candidates.length}件`}
-                        </button>
+                      {r.matchType !== 'none' ? (
+                        <div className="flex items-center gap-1 justify-end">
+                          {r.confirmed ? (
+                            <button
+                              onClick={() => handleUnconfirm(r.index)}
+                              className="text-[10px] text-slate-500 hover:text-red-600 font-medium"
+                              title="確認を取り消す"
+                            >
+                              ✓取り消し
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleSelectCandidate(r.index, 0)}
+                              className="text-[10px] text-emerald-600 hover:text-emerald-800 font-medium"
+                              title="候補を確定する"
+                            >
+                              確認
+                            </button>
+                          )}
+                          {r.candidates.length > 1 && (
+                            <button
+                              onClick={() => toggleExpand(r.index)}
+                              className="text-[10px] text-primary-600 hover:text-primary-800 font-medium"
+                              title="候補を選択"
+                            >
+                              {expandedRows[r.index] ? '▲' : `▼${r.candidates.length}件`}
+                            </button>
+                          )}
+                        </div>
                       ) : (
-                        <span className="text-slate-500 text-[10px]">{r.candidates.length > 0 ? '1件' : '-'}</span>
+                        <span className="text-slate-300 text-[10px]">-</span>
                       )}
                     </td>
                   </tr>

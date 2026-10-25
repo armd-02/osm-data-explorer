@@ -28,8 +28,10 @@ function ResultsPanel() {
     return { total: results.length, byType, missingNameCount: missingName.length, missingTags }
   }, [results])
 
-  const handleSelect = (id) => {
-    dispatch({ type: 'SET_ACTIVE_RESULT', payload: id })
+  const makeOsmId = (r) => `${r.type}/${r.id}`
+
+  const handleSelect = (result) => {
+    dispatch({ type: 'SET_ACTIVE_RESULT', payload: makeOsmId(result) })
   }
 
   if (status === 'loading') {
@@ -76,9 +78,9 @@ function ResultsPanel() {
           {results.slice(0, 500).map((result) => (
             <li
               key={`${result.type}-${result.id}`}
-              onClick={() => handleSelect(result.id)}
+              onClick={() => handleSelect(result)}
               className={`px-4 py-2 cursor-pointer transition-colors ${
-                activeResultId === result.id
+                activeResultId === makeOsmId(result)
                   ? 'bg-primary-50 border-l-2 border-primary-500'
                   : 'hover:bg-slate-50'
               }`}

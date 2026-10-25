@@ -214,18 +214,18 @@ export function getCategoryById(id) {
  */
 export function categoryToQueryFilter(category) {
   if (!category || !category.tags || category.tags.length === 0) {
-    return { unionFilters: [], andFilter: '' }
+    return { unionFilters: [], andFilters: [] }
   }
 
   const logic = category.logic || 'or'
 
-  // 各tag条件をOverpass QLフィルタに変換
+  // 各tag条件をOverpass QLフィルタに変換（角括弧なしのフィルタ内容）
   const filters = category.tags.map((tag) => {
     const safeKey = escapeStr(tag.key)
     if (tag.values && tag.values.length > 1) {
       // 複数値 → 正規表現でOR
       const escaped = tag.values.map((v) => escapeRegex(v))
-      return `${safeKey}~"^{(${escaped.join('|')})}$"`
+      return `${safeKey}~"^(${escaped.join('|')})$"`
     } else if (tag.values && tag.values.length === 1) {
       return `${safeKey}=${quoteValue(tag.values[0])}`
     }
@@ -233,12 +233,12 @@ export function categoryToQueryFilter(category) {
   })
 
   if (logic === 'and') {
-    // AND: 複数フィルタを連結 [cond1][cond2]
-    return { unionFilters: [], andFilter: filters.map(f => `[${f}]`).join('') }
+    // AND: フィルタ配列を返す（クエリ生成側が [f1][f2] に連結）
+    return { unionFilters: [], andFilters: filters }
   }
 
-  // OR: 各フィルタを個別に持つ
-  return { unionFilters: filters.map(f => `[${f}]`), andFilter: '' }
+  // OR: 各フィルタを個別に返す（クエリ生成側が [f] でunionブランチ化）
+  return { unionFilters: filters, andFilters: [] }
 }
 
 /**
