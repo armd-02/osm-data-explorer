@@ -114,6 +114,9 @@ function OverviewTab({ stats, fetchMeta }) {
           <p className="text-[10px] text-slate-400 mt-0.5">
             出典: OpenStreetMap (ODbL) / © OpenStreetMap contributors
           </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            ※ 件数は上記取得時点のOSMデータに基づく。OSMは常時更新されるため、実際の最新状態と異なる場合があります。
+          </p>
         </div>
       )}
     </div>
