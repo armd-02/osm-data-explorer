@@ -17,26 +17,35 @@ export function useSearch() {
   const { state, dispatch } = useApp()
   const abortRef = useRef(null)
 
-  const search = useCallback(async () => {
+  /**
+   * 検索実行
+   * @param {object|null} bboxOverride - 明示的なBBOX ({south,west,north,east})。
+   *   指定があればそれを優先し、無ければ state.bbox を使用する。
+   *   (#41) 「検索する」押下時に地図の表示範囲を渡す設計。
+   */
+  const search = useCallback(async (bboxOverride = null) => {
     // 前回のリクエストをキャンセル
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
     }
 
-    if (!state.bbox) {
+    // 使用するBBOXを確定 (#41: 明示的引数 > state.bbox)
+    const bbox = bboxOverride || state.bbox
+
+    if (!bbox) {
       dispatch({ type: 'SET_STATUS', payload: 'error' })
       dispatch({
         type: 'SET_ERROR',
         payload: '検索範囲が設定されていません。',
         errorType: 'network',
-        errorSuggestion: '地図上で「☐ 範囲指定」または「◎ この範囲を設定」を使って検索範囲を指定してください。'
+        errorSuggestion: '地図を移動・拡大して検索したい範囲を表示し、「検索する」を押してください。'
       })
       return
     }
 
     // 範囲が大きすぎる場合のチェック
-    const sizeCheck = checkBboxSize(state.bbox)
+    const sizeCheck = checkBboxSize(bbox)
     if (sizeCheck.areaKm2 > 40000) {
       dispatch({ type: 'SET_STATUS', payload: 'error' })
       dispatch({
@@ -51,6 +60,11 @@ export function useSearch() {
     dispatch({ type: 'SET_STATUS', payload: 'loading' })
     dispatch({ type: 'SET_ERROR', payload: null })
 
+    // 使用したBBOXをstateに反映（共有URL・前回範囲表示用）
+    if (bboxOverride) {
+      dispatch({ type: 'SET_BBOX', payload: bboxOverride })
+    }
+
     // キャンセルシグナル
     const controller = new AbortController()
     abortRef.current = controller
@@ -59,7 +73,7 @@ export function useSearch() {
       let query, keyword
 
       if (state.searchMode === 'simple') {
-        ;({ query, keyword } = buildSimpleQuery(state.bbox, state.simpleSearch.category, state.simpleSearch.keyword))
+        ;({ query, keyword } = buildSimpleQuery(bbox, state.simpleSearch.category, state.simpleSearch.keyword))
       } else {
         const { tags, keyword: kw, useAnd } = state.advancedSearch
         if (tags.length === 0 && !kw) {
@@ -72,7 +86,7 @@ export function useSearch() {
           })
           return
         }
-        ;({ query, keyword } = buildAdvancedQuery(state.bbox, tags, kw, useAnd))
+        ;({ query, keyword } = buildAdvancedQuery(bbox, tags, kw, useAnd))
       }
 
       const { results, meta } = await executeOverpassQuery(query, {

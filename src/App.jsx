@@ -12,6 +12,7 @@ import BatchMatch from './components/BatchMatch'
 import AboutPanel from './components/AboutPanel'
 import StatusBanner from './components/StatusBanner'
 import { decodeURLToState } from './utils/urlState'
+import { getMapInstance } from './hooks/useMapRef'
 import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
 
 // メインタブ定義
@@ -144,6 +145,38 @@ function App() {
  */
 function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setShowMap }) {
   const { state } = React.useContext(AppContext)
+  const [splitPct, setSplitPct] = React.useState(68) // (#41) リサイズ可能な分割比率
+  const splitRef = React.useRef(null) // スプリットコンテナref
+  const draggingRef = React.useRef(false)
+
+  // (#41) Pointer Eventsでリサイズ（マウス/タッチ/ペン対応）
+  const handleResizeStart = React.useCallback((e) => {
+    e.preventDefault()
+    draggingRef.current = true
+    const container = splitRef.current
+    if (!container) return
+
+    const onMove = (ev) => {
+      if (!draggingRef.current) return
+      const rect = container.getBoundingClientRect()
+      let pct = ((ev.clientX - rect.left) / rect.width) * 100
+      // 最小幅制限: 一覧≥25%, 地図≥20%
+      pct = Math.max(25, Math.min(80, pct))
+      setSplitPct(pct)
+    }
+
+    const onUp = () => {
+      draggingRef.current = false
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      // Leafletサイズ再調整
+      const map = getMapInstance()
+      if (map) map.invalidateSize()
+    }
+
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }, [])
 
   return (
     <div className="search-workspace flex flex-col flex-1 min-h-0">
@@ -177,16 +210,32 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
         )}
       </div>
 
-      {/* 施設一覧 + 地図/詳細 のスプリットレイアウト */}
-      <div className="search-split flex flex-1 min-h-0">
-        {/* 施設一覧（左: 65-75%） */}
-        <div className={`${showMap ? 'w-[68%]' : 'w-full'} border-r border-slate-200 flex flex-col min-h-0 transition-all`}>
+      {/* 施設一覧 + 地図 のリサイズ可能スプリットレイアウト (#41) */}
+      <div ref={splitRef} className="search-split flex flex-1 min-h-0 relative">
+        {/* 施設一覧（左） */}
+        <div
+          className={`${showMap ? '' : 'w-full'} flex flex-col min-h-0 overflow-hidden`} 
+          style={showMap ? { width: `${splitPct}%` } : undefined}
+        >
           <ResultsPanel />
         </div>
 
-        {/* 地図/詳細（右: 25-35%） */}
+        {/* ドラッグハンドル (#41) */}
         {showMap && (
-          <div className="w-[32%] flex flex-col min-h-0 relative">
+          <div
+            className="w-1.5 cursor-col-resize bg-slate-200 hover:bg-primary-300 active:bg-primary-400 transition-colors flex items-center justify-center shrink-0 touch-none"
+            onPointerDown={handleResizeStart}
+            title="ドラッグでリサイズ"
+          >
+            <div className="w-0.5 h-8 bg-slate-400 rounded-full" />
+          </div>
+        )}
+
+        {/* 地図（右） */}
+        {showMap && (
+          <div
+            className="flex flex-col min-h-0 relative flex-1 overflow-hidden"
+          >
             <div className="flex items-center justify-between px-2 py-1 bg-slate-50 border-b border-slate-100 shrink-0">
               <span className="text-[10px] text-slate-400">地図表示</span>
               <button

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { useSearch } from '../hooks/useSearch'
 import { checkBboxSize } from '../utils/geo'
+import { getMapInstance } from '../hooks/useMapRef'
 import SimpleSearch from './SimpleSearch'
 import AdvancedSearch from './AdvancedSearch'
 
@@ -14,6 +15,32 @@ function SearchPanel() {
     if (!bbox) return null
     return checkBboxSize(bbox).tooLarge ? checkBboxSize(bbox) : null
   }, [bbox])
+
+  /**
+   * (#41) 検索実行: 地図の表示範囲をBBOXとして使用する
+   * 地図が表示されていれば map.getBounds() から取得、
+   * なければ最後に確定した state.bbox を使用する。
+   */
+  const handleSearch = () => {
+    const map = getMapInstance()
+    if (map) {
+      const bounds = map.getBounds()
+      const mapBbox = {
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+        north: bounds.getNorth(),
+        east: bounds.getEast()
+      }
+      search(mapBbox)
+    } else {
+      // 地図非表示時は state.bbox（前回検索範囲）を使用
+      if (state.bbox) {
+        search(state.bbox)
+      } else {
+        search(null) // useSearch内でエラー案内
+      }
+    }
+  }
 
   return (
     <div className="p-4 space-y-4">
@@ -44,9 +71,9 @@ function SearchPanel() {
       {/* Search form */}
       {searchMode === 'simple' ? <SimpleSearch /> : <AdvancedSearch />}
 
-      {/* BBOX info */}
+      {/* BBOX info (#41: 「前回検索範囲」と明記) */}
       <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-        <h3 className="text-xs font-medium text-slate-500 mb-1">検索範囲</h3>
+        <h3 className="text-xs font-medium text-slate-500 mb-1">前回検索範囲</h3>
         {state.bbox ? (
           <>
             <p className="text-xs text-slate-600 font-mono">
@@ -66,7 +93,7 @@ function SearchPanel() {
           </>
         ) : (
           <p className="text-xs text-slate-400">
-            検索範囲が未設定です。地図上で「◎ この範囲を設定」または「☐ 範囲指定」を使って指定してください。
+            地図を移動・拡大して検索したい範囲を表示し、「検索する」を押してください。
           </p>
         )}
       </div>
@@ -74,7 +101,7 @@ function SearchPanel() {
       {/* Search button */}
       <div className="flex gap-2">
         <button
-          onClick={search}
+          onClick={handleSearch}
           disabled={state.status === 'loading'}
           className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
         >

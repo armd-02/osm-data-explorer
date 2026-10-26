@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react'
+import React, { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useApp } from '../context/AppContext'
@@ -26,9 +26,10 @@ const MAX_MAP_MARKERS = 500
 /**
  * 地図コンポーネント
  * 
- * 設計方針 (#29):
- * - state.bbox は「検索に使う確定BBOX」であり、地図のpan/zoomでは更新されない
- * - 検索範囲は明示的な操作（矩形指定 / 「この範囲を設定」ボタン）でのみ更新
+ * 設計方針 (#29 + #41):
+ * - state.bbox は「前回検索に使用したBBOX」であり、地図のpan/zoomでは更新されない
+ * - (#41) 検索範囲は「検索する」押下時点の地図表示範囲（getBounds）で決定される
+ * - 矩形指定・「この範囲を設定」ボタンは廃止
  * - 施設選択のpanToでBBOXが変わらない
  */
 function MapView() {
@@ -69,7 +70,6 @@ function MapView() {
     }
 
     // (#29) 地図のmoveend/zoomendでBBOXを更新しない
-    // 検索BBOXは明示的な操作（矩形指定/ボタン）でのみ変更される
 
     return () => {
       map.remove()
@@ -94,7 +94,7 @@ function MapView() {
     }
   }, [])
 
-  // Draw BBOX overlay（確定BBOXの表示）
+  // Draw BBOX overlay（前回検索範囲の表示）
   useEffect(() => {
     if (!leafletRef.current) return
     const map = leafletRef.current
@@ -111,8 +111,8 @@ function MapView() {
       )
       bboxLayerRef.current = L.rectangle(bounds, {
         color: '#3b82f6',
-        weight: 2,
-        fillOpacity: 0.05,
+        weight: 1.5,
+        fillOpacity: 0.03,
         dashArray: '6'
       }).addTo(map)
 
@@ -179,35 +179,10 @@ function MapView() {
     }
   }, [activeResultId, results])
 
-  // 矩形描画完了時のBBOX設定（明示的な操作）
-  const handleDrawComplete = useCallback((newBbox) => {
-    dispatch({ type: 'SET_BBOX', payload: newBbox })
-  }, [dispatch])
-
-  // 「この表示範囲を検索範囲に設定」ボタン
-  const handleSetViewAsBbox = useCallback(() => {
-    if (!leafletRef.current) return
-    const bounds = leafletRef.current.getBounds()
-    dispatch({
-      type: 'SET_BBOX',
-      payload: {
-        south: bounds.getSouth(),
-        west: bounds.getWest(),
-        north: bounds.getNorth(),
-        east: bounds.getEast()
-      }
-    })
-  }, [dispatch])
-
   return (
     <div className="absolute inset-0">
       <div ref={mapRef} className="w-full h-full" />
-      <MapToolbar
-        leafletRef={leafletRef}
-        bboxLayerRef={bboxLayerRef}
-        onDrawComplete={handleDrawComplete}
-        onSetViewAsBbox={handleSetViewAsBbox}
-      />
+      <MapToolbar leafletRef={leafletRef} />
       {results.length > MAX_MAP_MARKERS && (
         <div className="absolute bottom-1 left-1 right-1 z-[1000] bg-amber-50/95 border border-amber-200 text-amber-800 text-[10px] leading-tight px-2 py-1 rounded shadow-sm">
           地図上の表示は {MAX_MAP_MARKERS} 件まで（全 {results.length.toLocaleString()} 件）。検索結果一覧・集計・CSV/GeoJSON出力は全件対応です。
