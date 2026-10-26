@@ -37,8 +37,10 @@ export function encodeStateToURL(state) {
     params.set(PARAM_KEYS.src, 'm')
     if (state.selectedMunicipality) {
       params.set(PARAM_KEYS.mun, state.selectedMunicipality.code)
-      if (state.simpleSearch.category) params.set(PARAM_KEYS.cat, state.simpleSearch.category)
-      if (state.simpleSearch.keyword) params.set(PARAM_KEYS.kw, state.simpleSearch.keyword)
+      // (#47) 自治体モードのカテゴリ・キーワードはmunicipalitySearchから
+      const ms = state.municipalitySearch || state.simpleSearch
+      if (ms.category) params.set(PARAM_KEYS.cat, ms.category)
+      if (ms.keyword) params.set(PARAM_KEYS.kw, ms.keyword)
     }
   } else {
     // Map mode (default)
@@ -91,10 +93,10 @@ export function decodeURLToState(searchParams) {
     state.searchSource = 'municipality'
     state.selectedMunicipality = { code: munCode, name: '', bbox: null }
     state.searchMode = 'simple'
-    state.simpleSearch = {
+    // (#47) 自治体モード用のカテゴリ・キーワード
+    state.municipalitySearch = {
       category: params.get(PARAM_KEYS.cat) || '',
-      keyword: params.get(PARAM_KEYS.kw) || '',
-      location: ''
+      keyword: params.get(PARAM_KEYS.kw) || ''
     }
     hasData = true
   } else {
@@ -253,6 +255,9 @@ export function applyStateFromURL(state, dispatch) {
   }
   if (urlState.selectedMunicipality) {
     dispatch({ type: 'SET_MUNICIPALITY', payload: urlState.selectedMunicipality })
+  }
+  if (urlState.municipalitySearch) {
+    dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: urlState.municipalitySearch })
   }
   if (urlState.searchMode) {
     dispatch({ type: 'SET_SEARCH_MODE', payload: urlState.searchMode })

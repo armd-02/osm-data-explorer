@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { useSearch } from '../hooks/useSearch'
 import { CATEGORIES } from '../data/categories'
 
 /**
@@ -12,14 +11,13 @@ import { CATEGORIES } from '../data/categories'
 // 都道府県リストを動的生成（データ読み込み後にセット）
 export default function MunicipalitySearch() {
   const { state, dispatch } = useApp()
-  const { search, cancel } = useSearch()
 
   const [data, setData] = useState(null) // municipalities.json
   const [loading, setLoading] = useState(true)
   const [prefCode, setPrefCode] = useState('')
   const [munCode, setMunCode] = useState('')
-  const [category, setCategory] = useState('')
-  const [keyword, setKeyword] = useState('')
+  // (#47) カテゴリ・キーワードは親stateに上げ、検索ボタンと共有する
+  const { category, keyword } = state.municipalitySearch || { category: '', keyword: '' }
 
   // 自治体JSONをフェッチ（初回のみ）
   useEffect(() => {
@@ -34,10 +32,8 @@ export default function MunicipalitySearch() {
           if (mun) {
             setPrefCode(mun.prefCode)
             setMunCode(mun.code)
-            if (state.simpleSearch?.category) setCategory(state.simpleSearch.category)
-            if (state.simpleSearch?.keyword) setKeyword(state.simpleSearch.keyword)
             // (#46) 表示名を復元
-            if (!state.selectedMunicipality.name) {
+            if (!state.selectedMunicipality.name || !state.selectedMunicipality.bbox) {
               dispatch({ type: 'SET_MUNICIPALITY', payload: {
                 code: mun.code,
                 name: mun.displayName || mun.name,
@@ -81,33 +77,34 @@ export default function MunicipalitySearch() {
     return data.municipalities.find(m => m.code === munCode) || null
   }, [data, munCode])
 
-  // 地名変更時、自治体選択をリセット
+  // 都道府県変更時、自治体選択をリセットし、親stateからもクリア (#47)
   const handlePrefChange = (e) => {
     setPrefCode(e.target.value)
     setMunCode('')
+    dispatch({ type: 'SET_MUNICIPALITY', payload: null })
   }
 
-  // 検索実行 (#44: 自治体BBOXを直接使用)
-  const handleSearch = () => {
-    if (!selectedMun) return
-
-    // 自治体BBOXを渡す
-    dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'municipality' })
-    dispatch({ type: 'SET_MUNICIPALITY', payload: {
-      code: selectedMun.code,
-      name: selectedMun.displayName || selectedMun.name,
-      bbox: selectedMun.bbox
-    }})
-
-    // 検索モードをmunicipalityに設定
-    dispatch({ type: 'SET_SEARCH_MODE', payload: 'simple' })
-    dispatch({ type: 'SET_SIMPLE_SEARCH', payload: { category, keyword, location: '' } })
-
-    // 自治体BBOXで検索
-    search(selectedMun.bbox)
+  // (#47) 市区町村選択を親stateに同期（検索ボタンのdisable判定・BBOX共有用）
+  const handleMunChange = (e) => {
+    const code = e.target.value
+    setMunCode(code)
+    if (!code) {
+      dispatch({ type: 'SET_MUNICIPALITY', payload: null })
+      return
+    }
+    const mun = data.municipalities.find(m => m.code === code)
+    if (mun) {
+      dispatch({ type: 'SET_MUNICIPALITY', payload: {
+        code: mun.code,
+        name: mun.displayName || mun.name,
+        bbox: mun.bbox
+      }})
+    }
   }
 
-  const isLoading = state.status === 'loading'
+  const updateMunicipalitySearch = (field, value) => {
+    dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: { [field]: value } })
+  }
 
   // ローディング中
   if (loading) {
@@ -142,7 +139,7 @@ export default function MunicipalitySearch() {
           <label className="block text-xs font-medium text-slate-600 mb-1">市区町村</label>
           <select
             value={munCode}
-            onChange={(e) => setMunCode(e.target.value)}
+            onChange={handleMunChange}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
             <option value="">選択してください</option>
@@ -163,7 +160,7 @@ export default function MunicipalitySearch() {
             <label className="block text-xs font-medium text-slate-600 mb-1">カテゴリ（任意）</label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => updateMunicipalitySearch('category', e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="">すべて（POI）</option>
@@ -178,7 +175,7 @@ export default function MunicipalitySearch() {
             <input
               type="text"
               value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              onChange={(e) => updateMunicipalitySearch('keyword', e.target.value)}
               placeholder="例: 寿司"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
@@ -211,8 +208,6 @@ export default function MunicipalitySearch() {
           })()}
         </div>
       )}
-
-      {/* (#47) 検索ボタンはApp.jsxのスクロール外に表示 */}
     </div>
   )
 }

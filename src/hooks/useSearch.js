@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   buildSimpleQuery,
@@ -18,21 +18,33 @@ export function useSearch() {
   const { state, dispatch } = useApp()
   const abortRef = useRef(null)
 
+  // (#47) 最新のstateを常に読むためのref（クローズドオーバーの旧stateを防ぐ）
+  const stateRef = useRef(state)
+  useEffect(() => {
+    stateRef.current = state
+  })
+
   /**
    * 検索実行
-   * @param {object|null} bboxOverride - 明示的なBBOX ({south,west,north,east})。
-   *   指定があればそれを優先し、無ければ state.bbox を使用する。
-   *   (#41) 「検索する」押下時に地図の表示範囲を渡す設計。
+   * @param {object|null} criteria - 「検索する」押下時点の検索条件スナップショット。
+   *   buildSearchCriteria() の戻り値（{ ok, bbox, searchSource, searchMode, query, keyword }）。
+   *   query が含まれる場合、そのクエリをそのまま実行する（dispatch との競合を排除 #47）。
+   *   後方互換: 裸のBBOXオブジェクト（{south,west,north,east}）を渡した場合、
+   *   最新のstateからクエリを生成する（#41 方式のlegacy）。
    */
-  const search = useCallback(async (bboxOverride = null) => {
+  const search = useCallback(async (criteria = null) => {
     // 前回のリクエストをキャンセル
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
     }
 
-    // 使用するBBOXを確定 (#41: 明示的引数 > state.bbox)
-    const bbox = bboxOverride || state.bbox
+    // BBOXを確定
+    // legacy（裸BBOX）の場合、bboxOverride とみなして最新のstate.bboxにフォールバック
+    const isLegacyBbox = criteria && typeof criteria === 'object' && !criteria.query && criteria.south !== undefined
+    const bbox = isLegacyBbox
+      ? (criteria && Object.keys(criteria).length > 0 ? criteria : stateRef.current.bbox)
+      : (criteria ? criteria.bbox : null)
 
     if (!bbox) {
       dispatch({ type: 'SET_STATUS', payload: 'error' })
@@ -62,9 +74,7 @@ export function useSearch() {
     dispatch({ type: 'SET_ERROR', payload: null })
 
     // 使用したBBOXをstateに反映（共有URL・前回範囲表示用）
-    if (bboxOverride) {
-      dispatch({ type: 'SET_BBOX', payload: bboxOverride })
-    }
+    dispatch({ type: 'SET_BBOX', payload: bbox })
 
     // キャンセルシグナル
     const controller = new AbortController()
@@ -73,24 +83,32 @@ export function useSearch() {
     try {
       let query, keyword
 
-      if (state.searchSource === 'municipality') {
-        // (#44) 自治体モード: POI限定クエリ
-        ;({ query, keyword } = buildPoiQuery(bbox, state.simpleSearch.category, state.simpleSearch.keyword))
-      } else if (state.searchMode === 'simple') {
-        ;({ query, keyword } = buildSimpleQuery(bbox, state.simpleSearch.category, state.simpleSearch.keyword))
+      if (criteria && criteria.query) {
+        // (#47) クリック時点のスナップショットのクエリをそのまま実行
+        query = criteria.query
+        keyword = criteria.keyword || ''
       } else {
-        const { tags, keyword: kw, useAnd } = state.advancedSearch
-        if (tags.length === 0 && !kw) {
-          dispatch({ type: 'SET_STATUS', payload: 'error' })
-          dispatch({
-            type: 'SET_ERROR',
-            payload: '検索条件を指定してください。',
-            errorType: 'invalid_query',
-            errorSuggestion: 'OSMタグ条件を1つ以上追加するか、キーワードを入力してください。'
-          })
-          return
+        // legacy: 最新のstateからクエリを生成
+        const s = stateRef.current
+        if (s.searchSource === 'municipality') {
+          const ms = s.municipalitySearch || s.simpleSearch
+          ;({ query, keyword } = buildPoiQuery(bbox, ms.category, ms.keyword))
+        } else if (s.searchMode === 'simple') {
+          ;({ query, keyword } = buildSimpleQuery(bbox, s.simpleSearch.category, s.simpleSearch.keyword))
+        } else {
+          const { tags, keyword: kw, useAnd } = s.advancedSearch
+          if (tags.length === 0 && !kw) {
+            dispatch({ type: 'SET_STATUS', payload: 'error' })
+            dispatch({
+              type: 'SET_ERROR',
+              payload: '検索条件を指定してください。',
+              errorType: 'invalid_query',
+              errorSuggestion: 'OSMタグ条件を1つ以上追加するか、キーワードを入力してください。'
+            })
+            return
+          }
+          ;({ query, keyword } = buildAdvancedQuery(bbox, tags, kw, useAnd))
         }
-        ;({ query, keyword } = buildAdvancedQuery(bbox, tags, kw, useAnd))
       }
 
       const { results, meta } = await executeOverpassQuery(query, {
@@ -129,7 +147,7 @@ export function useSearch() {
     } finally {
       abortRef.current = null
     }
-  }, [state, dispatch])
+  }, [dispatch])
 
   const cancel = useCallback(() => {
     if (abortRef.current) {
