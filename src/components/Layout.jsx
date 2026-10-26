@@ -2,7 +2,7 @@ import React from 'react'
 
 function Layout({ children }) {
   return (
-    <div className="h-screen flex flex-col bg-slate-50">
+    <div className="site-layout h-screen flex flex-col bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-4 py-2 shrink-0">
         <div className="flex items-center gap-3">
@@ -22,7 +22,7 @@ function Layout({ children }) {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 min-h-0 overflow-hidden">
+      <main className="site-main flex-1 min-h-0 overflow-hidden">
         {children}
       </main>
 
