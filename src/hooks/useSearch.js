@@ -28,9 +28,9 @@ export function useSearch() {
       dispatch({ type: 'SET_STATUS', payload: 'error' })
       dispatch({
         type: 'SET_ERROR',
-        payload: '検索範囲が設定されていません。地図を移動して範囲を指定してください。',
+        payload: '検索範囲が設定されていません。',
         errorType: 'network',
-        errorSuggestion: '地図を移動するか、矩形描画で範囲を指定してください。'
+        errorSuggestion: '地図上で「☐ 範囲指定」または「◎ この範囲を設定」を使って検索範囲を指定してください。'
       })
       return
     }

@@ -11,8 +11,6 @@ const DEFAULT_ZOOM = 13
 
 /**
  * HTMLエスケープ（XSS対策）
- * OSMタグ値・名称等は第三者編集可能データのため、
- * HTMLとして解釈される前にエスケープする。
  */
 function escapeHtml(str) {
   return String(str ?? '')
@@ -23,16 +21,21 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;')
 }
 
-// 地図上のマーカー表示上限。超過時は先頭分のみ表示し、制約を通知で明示する。
-// 検索結果一覧・集計・CSV/GeoJSON出力は全件対応（この上限は地図表示のみ）。
 const MAX_MAP_MARKERS = 500
 
+/**
+ * 地図コンポーネント
+ * 
+ * 設計方針 (#29):
+ * - state.bbox は「検索に使う確定BBOX」であり、地図のpan/zoomでは更新されない
+ * - 検索範囲は明示的な操作（矩形指定 / 「この範囲を設定」ボタン）でのみ更新
+ * - 施設選択のpanToでBBOXが変わらない
+ */
 function MapView() {
-  const mapRef = useRef(null)
-  const leafletRef = useRef(null)
+  const mapRef = useRef(null)       // DOM要素ref
+  const leafletRef = useRef(null)   // Leaflet Mapインスタンスref
   const bboxLayerRef = useRef(null)
   const markersRef = useRef([])
-  // URL復元BBOXで地図をfitする必要があるかどうか（初回のみ）
   const needsFitRef = useRef(false)
   const { state, dispatch } = useApp()
   const { results, activeResultId, bbox } = state
@@ -41,7 +44,6 @@ function MapView() {
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return
 
-    // URLからBBOXが復元されている場合、初期位置をその中心に設定
     const initialBbox = state.bbox
     const center = initialBbox
       ? [(initialBbox.south + initialBbox.north) / 2, (initialBbox.west + initialBbox.east) / 2]
@@ -53,7 +55,6 @@ function MapView() {
       zoomControl: true
     })
 
-    // OSM tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',
       maxZoom: 19
@@ -62,50 +63,22 @@ function MapView() {
     leafletRef.current = map
     setMapInstance(map)
 
-    // URL復元BBOXなら、bboxLayerのeffectでfitBoundsする
+    // URL復元BBOXならfitBoundsする
     if (initialBbox) {
       needsFitRef.current = true
     }
 
-    // Update BBOX when map moves（ただしfitBounds直後はスキップ）
-    let skipNextUpdate = false
-    const updateBbox = () => {
-      if (skipNextUpdate) {
-        skipNextUpdate = false
-        return
-      }
-      const bounds = map.getBounds()
-      dispatch({
-        type: 'SET_BBOX',
-        payload: {
-          south: bounds.getSouth(),
-          west: bounds.getWest(),
-          north: bounds.getNorth(),
-          east: bounds.getEast()
-        }
-      })
-    }
-
-    map.on('moveend zoomend', updateBbox)
-    // 初期BBOXを反映（fitBoundsはbboxLayerのeffectで行う）
-    if (initialBbox) {
-      skipNextUpdate = true
-      dispatch({
-        type: 'SET_BBOX',
-        payload: { ...initialBbox }
-      })
-    } else {
-      updateBbox()
-    }
+    // (#29) 地図のmoveend/zoomendでBBOXを更新しない
+    // 検索BBOXは明示的な操作（矩形指定/ボタン）でのみ変更される
 
     return () => {
       map.remove()
       leafletRef.current = null
       setMapInstance(null)
     }
-  }, [dispatch])
+  }, [])
 
-  // ウィンドウリサイズ（スマホの画面回転など）で地図サイズを再調整
+  // ウィンドウリサイズで地図サイズを再調整
   useEffect(() => {
     let timer = null
     const onResize = () => {
@@ -121,12 +94,11 @@ function MapView() {
     }
   }, [])
 
-  // Draw BBOX overlay + fitBounds（URL復元時のみ初回）
+  // Draw BBOX overlay（確定BBOXの表示）
   useEffect(() => {
     if (!leafletRef.current) return
     const map = leafletRef.current
 
-    // Remove old BBOX layer
     if (bboxLayerRef.current) {
       map.removeLayer(bboxLayerRef.current)
       bboxLayerRef.current = null
@@ -157,11 +129,9 @@ function MapView() {
     if (!leafletRef.current) return
     const map = leafletRef.current
 
-    // Clear old markers
     markersRef.current.forEach((m) => map.removeLayer(m))
     markersRef.current = []
 
-    // Add new markers (地図上は MAX_MAP_MARKERS 件まで表示)
     if (results.length > 0) {
       const visibleResults = results.length > MAX_MAP_MARKERS
         ? results.slice(0, MAX_MAP_MARKERS)
@@ -199,7 +169,7 @@ function MapView() {
     }
   }, [results])
 
-  // Highlight active result（composite key: type/id）
+  // Highlight active result — panToで移動（BBOXは変更しない）
   useEffect(() => {
     if (!leafletRef.current || !activeResultId) return
     const map = leafletRef.current
@@ -209,21 +179,44 @@ function MapView() {
     }
   }, [activeResultId, results])
 
-  const handleDrawComplete = useCallback((bbox) => {
-    dispatch({ type: 'SET_BBOX', payload: bbox })
+  // 矩形描画完了時のBBOX設定（明示的な操作）
+  const handleDrawComplete = useCallback((newBbox) => {
+    dispatch({ type: 'SET_BBOX', payload: newBbox })
+  }, [dispatch])
+
+  // 「この表示範囲を検索範囲に設定」ボタン
+  const handleSetViewAsBbox = useCallback(() => {
+    if (!leafletRef.current) return
+    const bounds = leafletRef.current.getBounds()
+    dispatch({
+      type: 'SET_BBOX',
+      payload: {
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+        north: bounds.getNorth(),
+        east: bounds.getEast()
+      }
+    })
   }, [dispatch])
 
   return (
     <div className="absolute inset-0">
       <div ref={mapRef} className="w-full h-full" />
       <MapToolbar
-        mapRef={mapRef}
+        leafletRef={leafletRef}
         bboxLayerRef={bboxLayerRef}
         onDrawComplete={handleDrawComplete}
+        onSetViewAsBbox={handleSetViewAsBbox}
       />
       {results.length > MAX_MAP_MARKERS && (
         <div className="absolute bottom-1 left-1 right-1 z-[1000] bg-amber-50/95 border border-amber-200 text-amber-800 text-[10px] leading-tight px-2 py-1 rounded shadow-sm">
           地図上の表示は {MAX_MAP_MARKERS} 件まで（全 {results.length.toLocaleString()} 件）。検索結果一覧・集計・CSV/GeoJSON出力は全件対応です。
+        </div>
+      )}
+      {/* BBOX未設定時の案内 */}
+      {!bbox && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] bg-blue-50 border border-blue-200 text-blue-800 text-xs px-3 py-1.5 rounded-md shadow-sm">
+          検索範囲が未設定です。「☐ 範囲指定」または「この範囲を設定」で指定してください。
         </div>
       )}
     </div>

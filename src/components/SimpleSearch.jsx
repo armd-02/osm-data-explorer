@@ -126,7 +126,7 @@ function SimpleSearch() {
           </button>
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          地図を目的地へ移動します。検索範囲は地図の表示範囲になります。
+          地図を目的地へ移動します（検索範囲は変更されません）。
         </p>
         {geocodeMsg && (
           <p className={`mt-1 text-xs ${geocodeMsg.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>

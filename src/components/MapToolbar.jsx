@@ -3,11 +3,6 @@ import L from 'leaflet'
 import { useApp } from '../context/AppContext'
 import { geocode, isAdministrativeBoundary } from '../utils/geo'
 
-/**
- * HTMLエスケープ（XSS対策）
- * Nominatimの地名表示等は第三者由来データのため、
- * HTMLとして解釈される前にエスケープする。
- */
 function escapeHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -18,9 +13,11 @@ function escapeHtml(str) {
 }
 
 /**
- * 地図ツールバー: 地名検索 + 矩形描画
+ * 地図ツールバー: 地名検索 + 矩形描画 + 表示範囲設定
+ * 
+ * (#29) leafletRefはLeaflet Mapインスタンスのref（DOM要素refではない）
  */
-function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
+function MapToolbar({ leafletRef, bboxLayerRef, onDrawComplete, onSetViewAsBbox }) {
   const [geocodeQuery, setGeocodeQuery] = useState('')
   const [geocoding, setGeocoding] = useState(false)
   const [geocodeError, setGeocodeError] = useState(null)
@@ -28,6 +25,8 @@ function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
   const firstClickRef = useRef(null)
   const drawLineRef = useRef(null)
   const drawRectRef = useRef(null)
+
+  const map = leafletRef.current
 
   const handleGeocode = useCallback(async (e) => {
     e.preventDefault()
@@ -43,26 +42,20 @@ function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
         return
       }
 
-      // 地図を目的地へ移動
-      if (mapRef.current) {
-        const map = mapRef.current
-        map.setView([result.lat, result.lon], Math.max(map.getZoom(), 15))
+      // 地図を目的地へ移動（BBOXは変更しない）
+      const m = leafletRef.current
+      if (m) {
+        m.setView([result.lat, result.lon], Math.max(m.getZoom(), 15))
 
-        // マーカー表示
         L.marker([result.lat, result.lon], {
           icon: L.divIcon({
             html: '<div style="width:16px;height:16px;background:#2563eb;border-radius:50%;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3)"></div>',
             iconSize: [16, 16],
             iconAnchor: [8, 8]
           })
-        }).addTo(map).bindPopup(
-          `<strong>${escapeHtml(result.displayName)}</strong><br/><small>検索範囲は地図の表示範囲になります</small>`
+        }).addTo(m).bindPopup(
+          `<strong>${escapeHtml(result.displayName)}</strong><br/><small>地図の表示位置が移動します（検索範囲は変更されません）</small>`
         ).openPopup()
-
-        // 行政区域の場合、メッセージを表示
-        if (isAdministrativeBoundary(result.type)) {
-          // 行政区域の境界は検索範囲にしない（中心点へ移動のみ）
-        }
       }
 
       setGeocodeQuery('')
@@ -71,54 +64,47 @@ function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
     } finally {
       setGeocoding(false)
     }
-  }, [geocodeQuery, geocoding, mapRef])
+  }, [geocodeQuery, geocoding, leafletRef])
 
   // 矩形描画モードのトグル
   const toggleDrawMode = useCallback(() => {
-    if (!mapRef.current) return
-    const map = mapRef.current
+    const m = leafletRef.current
+    if (!m) return
 
     if (drawingMode) {
-      // モード終了: クリックハンドラを解除
-      map.off('click', handleClick)
+      m.off('click', handleClick)
       setDrawingMode(false)
       firstClickRef.current = null
       if (drawLineRef.current) {
-        map.removeLayer(drawLineRef.current)
+        m.removeLayer(drawLineRef.current)
         drawLineRef.current = null
       }
       if (drawRectRef.current) {
-        map.removeLayer(drawRectRef.current)
+        m.removeLayer(drawRectRef.current)
         drawRectRef.current = null
       }
     } else {
-      // モード開始
-      map.on('click', handleClick)
+      m.on('click', handleClick)
       setDrawingMode(true)
     }
-  }, [drawingMode, mapRef])
+  }, [drawingMode, leafletRef])
 
   const handleClick = useCallback((e) => {
-    const map = mapRef.current
-    if (!map) return
+    const m = leafletRef.current
+    if (!m) return
 
     const latlng = e.latlng
 
     if (!firstClickRef.current) {
-      // 最初のクリック
       firstClickRef.current = latlng
-
-      // 仮のマーカー
       L.marker(latlng, {
         icon: L.divIcon({
           html: '<div style="width:10px;height:10px;background:#f59e0b;border-radius:50%;border:2px solid white"></div>',
           iconSize: [10, 10],
           iconAnchor: [5, 5]
         })
-      }).addTo(map)
-
+      }).addTo(m)
     } else {
-      // 2番目のクリック: 矩形完成
       const start = firstClickRef.current
       const end = latlng
 
@@ -127,35 +113,34 @@ function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
       const west = Math.min(start.lng, end.lng)
       const east = Math.max(start.lng, end.lng)
 
-      // 矩形を描画
       const bounds = L.latLngBounds([south, west], [north, east])
       if (drawRectRef.current) {
-        map.removeLayer(drawRectRef.current)
+        m.removeLayer(drawRectRef.current)
       }
       drawRectRef.current = L.rectangle(bounds, {
         color: '#f59e0b',
         weight: 2,
         fillOpacity: 0.1
-      }).addTo(map)
+      }).addTo(m)
 
-      // BBOXを設定
+      // 矩形でBBOXを設定（明示的な操作）
       onDrawComplete({ south, west, north, east })
 
-      // モード終了
       firstClickRef.current = null
-      map.off('click', handleClick)
+      m.off('click', handleClick)
       setDrawingMode(false)
     }
-  }, [mapRef, onDrawComplete])
+  }, [leafletRef, onDrawComplete])
 
-  // コンポーネントアンマウント時クリーンアップ
+  // アンマウント時クリーンアップ
   useEffect(() => {
     return () => {
-      if (mapRef.current) {
-        mapRef.current.off('click', handleClick)
+      const m = leafletRef.current
+      if (m) {
+        m.off('click', handleClick)
       }
     }
-  }, [])
+  }, [leafletRef])
 
   return (
     <div className="absolute top-2 right-2 z-[1000] flex flex-col gap-1.5">
@@ -172,7 +157,7 @@ function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
           type="submit"
           disabled={geocoding || !geocodeQuery.trim()}
           className="px-2 py-1 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 text-white text-xs rounded-md shadow-sm transition-colors"
-          title="地名を地図へ移動"
+          title="地図の表示位置を移動（検索範囲は変更されません）"
         >
           {geocoding ? '...' : 'GO'}
         </button>
@@ -202,6 +187,15 @@ function MapToolbar({ mapRef, bboxLayerRef, onDrawComplete }) {
           地図をクリックして2点指定してください
         </p>
       )}
+
+      {/* 現在の表示範囲を検索範囲に設定 */}
+      <button
+        onClick={onSetViewAsBbox}
+        className="px-2.5 py-1.5 text-xs rounded-md shadow-sm transition-colors border bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+        title="地図の現在の表示範囲を検索範囲に設定"
+      >
+        ◎ この範囲を設定
+      </button>
     </div>
   )
 }
