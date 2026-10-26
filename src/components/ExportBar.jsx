@@ -13,7 +13,7 @@ function ExportBar() {
 
   // (#44) 自治体モードではファイル名に自治体名を含める
   const prefix = searchSource === 'municipality' && selectedMunicipality?.name
-    ? `osm-${selectedMunicipality.name}`
+    ? `osm-${selectedMunicipality.displayName || selectedMunicipality.name}`
     : 'osm-results'
 
   return (
@@ -35,7 +35,7 @@ function ExportBar() {
       </button>
       {searchSource === 'municipality' && selectedMunicipality?.name && (
         <span className="text-[10px] text-slate-500">
-          📍 {selectedMunicipality.name}
+          📍 {selectedMunicipality.displayName || selectedMunicipality.name}
         </span>
       )}
       <span className="text-[10px] text-slate-400 ml-auto">

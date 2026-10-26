@@ -36,6 +36,14 @@ export default function MunicipalitySearch() {
             setMunCode(mun.code)
             if (state.simpleSearch?.category) setCategory(state.simpleSearch.category)
             if (state.simpleSearch?.keyword) setKeyword(state.simpleSearch.keyword)
+            // (#46) 表示名を復元
+            if (!state.selectedMunicipality.name) {
+              dispatch({ type: 'SET_MUNICIPALITY', payload: {
+                code: mun.code,
+                name: mun.displayName || mun.name,
+                bbox: mun.bbox
+              }})
+            }
           }
         }
       })
@@ -87,7 +95,7 @@ export default function MunicipalitySearch() {
     dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'municipality' })
     dispatch({ type: 'SET_MUNICIPALITY', payload: {
       code: selectedMun.code,
-      name: selectedMun.name,
+      name: selectedMun.displayName || selectedMun.name,
       bbox: selectedMun.bbox
     }})
 
@@ -140,7 +148,7 @@ export default function MunicipalitySearch() {
             <option value="">選択してください</option>
             {munList.map(m => (
               <option key={m.code} value={m.code}>
-                {m.name}
+                {m.displayName || m.name}
                 {m.adminLevel === 8 ? '（区）' : ''}
               </option>
             ))}
@@ -182,7 +190,7 @@ export default function MunicipalitySearch() {
       {selectedMun && (
         <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
           <p className="text-xs text-slate-600">
-            📍 {selectedMun.name}とその周辺（BBOX）
+            📍 {selectedMun.displayName || selectedMun.name}とその周辺（BBOX）
           </p>
           <p className="text-xs text-slate-400 font-mono mt-1">
             {selectedMun.bbox.south.toFixed(4)}, {selectedMun.bbox.west.toFixed(4)}
