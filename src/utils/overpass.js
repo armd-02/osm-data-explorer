@@ -96,6 +96,31 @@ export function buildSimpleQuery(bbox, category, keyword) {
 }
 
 /**
+ * (#44) 自治体POI検索用クエリを生成
+ * カテゴリ指定時: buildSimpleQuery と同じロジック
+ * カテゴリ未指定: POI対象タグ（amenity/shop/tourism/leisure/office/healthcare/craft）に限定
+ */
+export function buildPoiQuery(bbox, category, keyword) {
+  const { south, west, north, east } = bbox
+  const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
+
+  const catFilter = category ? buildCategoryFilter(category) : null
+
+  let body
+  if (catFilter && (catFilter.unionFilters.length > 0 || (catFilter.andFilters && catFilter.andFilters.length > 0))) {
+    body = buildFilterBody(bboxStr, catFilter)
+  } else {
+    // (#44) カテゴリ未指定: POI対象タグに限定（道路・建物等を除外）
+    const poiKeys = ['amenity', 'shop', 'tourism', 'leisure', 'office', 'healthcare', 'craft']
+    const poiFilters = poiKeys.map(k => `node[${k}](${bboxStr});\n  way[${k}](${bboxStr});`)
+    body = poiFilters.join('\n  ')
+  }
+
+  const query = `[out:json][timeout:25];(\n${body}\n);\nout body center;\n`
+  return { query, keyword }
+}
+
+/**
  * 詳細検索用クエリを生成
  * - AND模式: 各条件を個別フィルタとして連結 [cond1][cond2]
  * - OR模式: 各条件をunionの別ブランチに分割

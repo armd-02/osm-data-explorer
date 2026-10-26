@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   buildSimpleQuery,
+  buildPoiQuery,
   buildAdvancedQuery,
   executeOverpassQuery,
   filterByKeyword,
@@ -72,7 +73,10 @@ export function useSearch() {
     try {
       let query, keyword
 
-      if (state.searchMode === 'simple') {
+      if (state.searchSource === 'municipality') {
+        // (#44) 自治体モード: POI限定クエリ
+        ;({ query, keyword } = buildPoiQuery(bbox, state.simpleSearch.category, state.simpleSearch.keyword))
+      } else if (state.searchMode === 'simple') {
         ;({ query, keyword } = buildSimpleQuery(bbox, state.simpleSearch.category, state.simpleSearch.keyword))
       } else {
         const { tags, keyword: kw, useAnd } = state.advancedSearch

@@ -50,6 +50,10 @@ function App() {
           return { ...state, results: [], error: null, errorType: null, errorSuggestion: null, status: 'idle', fetchMeta: null }
         case 'SET_ACTIVE_RESULT':
           return { ...state, activeResultId: action.payload }
+        case 'SET_SEARCH_SOURCE':
+          return { ...state, searchSource: action.payload }
+        case 'SET_MUNICIPALITY':
+          return { ...state, selectedMunicipality: action.payload }
         default:
           return state
       }
@@ -65,7 +69,9 @@ function App() {
       errorType: null,
       errorSuggestion: null,
       fetchMeta: null,
-      activeResultId: null
+      activeResultId: null,
+      searchSource: 'map',
+      selectedMunicipality: null
     }
   )
 
@@ -80,6 +86,8 @@ function App() {
       if (urlState.simpleSearch) dispatch({ type: 'SET_SIMPLE_SEARCH', payload: urlState.simpleSearch })
       if (urlState.advancedSearch) dispatch({ type: 'SET_ADVANCED_SEARCH', payload: urlState.advancedSearch })
       if (urlState.bbox) dispatch({ type: 'SET_BBOX', payload: urlState.bbox })
+      if (urlState.searchSource) dispatch({ type: 'SET_SEARCH_SOURCE', payload: urlState.searchSource })
+      if (urlState.selectedMunicipality) dispatch({ type: 'SET_MUNICIPALITY', payload: urlState.selectedMunicipality })
     }
   }, [dispatch])
 

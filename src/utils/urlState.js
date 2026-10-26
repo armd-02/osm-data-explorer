@@ -20,7 +20,9 @@ const PARAM_KEYS = {
   tags: 't',         // tag conditions (JSON encoded)
   and: 'and',        // AND/OR: 1/0
   advKw: 'ak',       // advanced keyword
-  tab: 'tab'         // right panel tab
+  tab: 'tab',        // right panel tab
+  src: 'src',        // (#44) search source: m(unicipality) / m(ap)
+  mun: 'mun'         // (#44) municipality code
 }
 
 /**
@@ -30,25 +32,34 @@ const PARAM_KEYS = {
 export function encodeStateToURL(state) {
   const params = new URLSearchParams()
   
-  // Search mode
-  if (state.searchMode === 'advanced') {
-    params.set(PARAM_KEYS.mode, 'a')
-  }
-  
-  // Simple search
-  if (state.searchMode === 'simple') {
-    if (state.simpleSearch.category) params.set(PARAM_KEYS.cat, state.simpleSearch.category)
-    if (state.simpleSearch.keyword) params.set(PARAM_KEYS.kw, state.simpleSearch.keyword)
-    if (state.simpleSearch.location) params.set(PARAM_KEYS.loc, state.simpleSearch.location)
-  }
-  
-  // Advanced search
-  if (state.searchMode === 'advanced') {
-    if (state.advancedSearch.tags.length > 0) {
-      params.set(PARAM_KEYS.tags, encodeTags(state.advancedSearch.tags))
+  // (#44) Search source
+  if (state.searchSource === 'municipality') {
+    params.set(PARAM_KEYS.src, 'm')
+    if (state.selectedMunicipality) {
+      params.set(PARAM_KEYS.mun, state.selectedMunicipality.code)
+      if (state.simpleSearch.category) params.set(PARAM_KEYS.cat, state.simpleSearch.category)
+      if (state.simpleSearch.keyword) params.set(PARAM_KEYS.kw, state.simpleSearch.keyword)
     }
-    if (state.advancedSearch.keyword) params.set(PARAM_KEYS.advKw, state.advancedSearch.keyword)
-    params.set(PARAM_KEYS.and, state.advancedSearch.useAnd ? '1' : '0')
+  } else {
+    // Map mode (default)
+    // Search mode
+    if (state.searchMode === 'advanced') {
+      params.set(PARAM_KEYS.mode, 'a')
+    }
+    // Simple search
+    if (state.searchMode === 'simple') {
+      if (state.simpleSearch.category) params.set(PARAM_KEYS.cat, state.simpleSearch.category)
+      if (state.simpleSearch.keyword) params.set(PARAM_KEYS.kw, state.simpleSearch.keyword)
+      if (state.simpleSearch.location) params.set(PARAM_KEYS.loc, state.simpleSearch.location)
+    }
+    // Advanced search
+    if (state.searchMode === 'advanced') {
+      if (state.advancedSearch.tags.length > 0) {
+        params.set(PARAM_KEYS.tags, encodeTags(state.advancedSearch.tags))
+      }
+      if (state.advancedSearch.keyword) params.set(PARAM_KEYS.advKw, state.advancedSearch.keyword)
+      params.set(PARAM_KEYS.and, state.advancedSearch.useAnd ? '1' : '0')
+    }
   }
   
   // Map state (BBOX)
@@ -71,35 +82,55 @@ export function decodeURLToState(searchParams) {
   const state = {}
   let hasData = false
 
-  // Search mode
-  const mode = params.get(PARAM_KEYS.mode)
-  if (mode === 'a') {
-    state.searchMode = 'advanced'
-    hasData = true
-  } else {
+  // (#44) Search source: municipality or map
+  const src = params.get(PARAM_KEYS.src)
+  const munCode = params.get(PARAM_KEYS.mun)
+
+  if (src === 'm' && munCode) {
+    // Municipality mode
+    state.searchSource = 'municipality'
+    state.selectedMunicipality = { code: munCode, name: '', bbox: null }
     state.searchMode = 'simple'
-  }
-
-  // Simple search
-  const cat = params.get(PARAM_KEYS.cat)
-  const kw = params.get(PARAM_KEYS.kw)
-  const loc = params.get(PARAM_KEYS.loc)
-  if (cat || kw || loc) {
-    state.simpleSearch = { category: cat || '', keyword: kw || '', location: loc || '' }
-    hasData = true
-  }
-
-  // Advanced search
-  const tags = params.get(PARAM_KEYS.tags)
-  const advKw = params.get(PARAM_KEYS.advKw)
-  const and = params.get(PARAM_KEYS.and)
-  if (tags || advKw) {
-    state.advancedSearch = {
-      tags: tags ? decodeTags(tags) : [],
-      keyword: advKw || '',
-      useAnd: and === '1' || (and === null && true)
+    state.simpleSearch = {
+      category: params.get(PARAM_KEYS.cat) || '',
+      keyword: params.get(PARAM_KEYS.kw) || '',
+      location: ''
     }
     hasData = true
+  } else {
+    // Map mode (default)
+    state.searchSource = 'map'
+    
+    // Search mode
+    const mode = params.get(PARAM_KEYS.mode)
+    if (mode === 'a') {
+      state.searchMode = 'advanced'
+      hasData = true
+    } else {
+      state.searchMode = 'simple'
+    }
+
+    // Simple search
+    const cat = params.get(PARAM_KEYS.cat)
+    const kw = params.get(PARAM_KEYS.kw)
+    const loc = params.get(PARAM_KEYS.loc)
+    if (cat || kw || loc) {
+      state.simpleSearch = { category: cat || '', keyword: kw || '', location: loc || '' }
+      hasData = true
+    }
+
+    // Advanced search
+    const tags = params.get(PARAM_KEYS.tags)
+    const advKw = params.get(PARAM_KEYS.advKw)
+    const and = params.get(PARAM_KEYS.and)
+    if (tags || advKw) {
+      state.advancedSearch = {
+        tags: tags ? decodeTags(tags) : [],
+        keyword: advKw || '',
+        useAnd: and === '1' || (and === null && true)
+      }
+      hasData = true
+    }
   }
 
   // BBOX (with validation)
@@ -108,9 +139,12 @@ export function decodeURLToState(searchParams) {
     const parts = bbox.split(',').map(Number)
     if (parts.length === 4 && parts.every(n => !isNaN(n))) {
       const [south, west, north, east] = parts
-      // BBOXバリデーション
       if (isBboxValid(south, west, north, east)) {
         state.bbox = { south, west, north, east }
+        // (#44) 自治体モードではBBOXをselectedMunicipalityにも設定
+        if (state.selectedMunicipality && !state.selectedMunicipality.bbox) {
+          state.selectedMunicipality.bbox = { south, west, north, east }
+        }
         hasData = true
       }
     }
@@ -213,7 +247,13 @@ export function applyStateFromURL(state, dispatch) {
   const urlState = decodeURLToState(window.location.search)
   if (!urlState) return false
 
-  // 各状態を設定
+  // (#44) 検索ソース
+  if (urlState.searchSource) {
+    dispatch({ type: 'SET_SEARCH_SOURCE', payload: urlState.searchSource })
+  }
+  if (urlState.selectedMunicipality) {
+    dispatch({ type: 'SET_MUNICIPALITY', payload: urlState.selectedMunicipality })
+  }
   if (urlState.searchMode) {
     dispatch({ type: 'SET_SEARCH_MODE', payload: urlState.searchMode })
   }
