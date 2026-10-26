@@ -86,7 +86,7 @@ function App() {
     <AppContext.Provider value={{ state, dispatch }}>
       <BatchMatchProvider>
       <Layout>
-        <div className="flex flex-col h-full min-h-0">
+        <div className="app-shell flex flex-col h-full min-h-0">
           {/* ===== Top Tab Bar ===== */}
           <nav className="flex items-center gap-1 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
             <span className="text-sm font-semibold text-slate-800 mr-3">OSMデータ検索</span>
@@ -106,7 +106,7 @@ function App() {
           </nav>
 
           {/* ===== Main Content ===== */}
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="app-main flex-1 flex flex-col min-h-0">
             {mainTab === 'search' && (
               <SearchTabContent
                 searchCollapsed={searchCollapsed}
@@ -146,7 +146,7 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
   const { state } = React.useContext(AppContext)
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="search-workspace flex flex-col flex-1 min-h-0">
       {/* Status Banner */}
       <StatusBanner />
       {/* Edit Panel (0件時の導線) */}
@@ -171,14 +171,14 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
           <ShareButton />
         </div>
         {!searchCollapsed && (
-          <div className="px-3 mt-2 max-h-[35vh] overflow-y-auto">
+          <div className="search-criteria-body px-3 mt-2 max-h-[35vh] overflow-y-auto">
             <SearchPanel />
           </div>
         )}
       </div>
 
       {/* 施設一覧 + 地図/詳細 のスプリットレイアウト */}
-      <div className="flex flex-1 min-h-0">
+      <div className="search-split flex flex-1 min-h-0">
         {/* 施設一覧（左: 65-75%） */}
         <div className={`${showMap ? 'w-[68%]' : 'w-full'} border-r border-slate-200 flex flex-col min-h-0 transition-all`}>
           <ResultsPanel />
