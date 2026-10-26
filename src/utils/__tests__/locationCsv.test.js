@@ -59,7 +59,7 @@ describe('地図作成用の座標付きCSV #42', () => {
       row(2, '=HYPERLINK("evil")', false)
     ])
     expect(csv).toContain('"喫茶 ""A,B"""')
-    expect(csv).toContain(''"'') // quoting is applied to formula-like cell
+    expect(csv).toContain("'=HYPERLINK") // 先頭の'で数式を無効化
   })
 
   it('空配列でもヘッダーのみを出力する', () => {
