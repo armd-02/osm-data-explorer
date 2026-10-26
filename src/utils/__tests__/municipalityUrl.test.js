@@ -7,7 +7,8 @@ describe('#44 Municipality URL encoding/decoding', () => {
       searchMode: 'simple',
       searchSource: 'municipality',
       selectedMunicipality: { code: '271021', name: '都島区', bbox: { south: 34.69, west: 135.51, north: 34.73, east: 135.54 } },
-      simpleSearch: { category: 'cafe', keyword: 'コーヒー', location: '' },
+      municipalitySearch: { category: 'cafe', keyword: 'コーヒー' },
+      simpleSearch: { category: 'restaurant', keyword: '', location: '' },
       advancedSearch: { tags: [], keyword: '', useAnd: true },
       bbox: { south: 34.69, west: 135.51, north: 34.73, east: 135.54 }
     }
@@ -23,6 +24,7 @@ describe('#44 Municipality URL encoding/decoding', () => {
       searchMode: 'simple',
       searchSource: 'map',
       selectedMunicipality: null,
+      municipalitySearch: { category: 'cafe', keyword: 'コーヒー' },
       simpleSearch: { category: 'cafe', keyword: '', location: '' },
       advancedSearch: { tags: [], keyword: '', useAnd: true },
       bbox: { south: 34.69, west: 135.51, north: 34.73, east: 135.54 }
@@ -30,6 +32,8 @@ describe('#44 Municipality URL encoding/decoding', () => {
     const qs = encodeStateToURL(state)
     expect(qs).not.toContain('src=')
     expect(qs).not.toContain('mun=')
+    // (#47) 自治体モード用の条件は地図モードURLに漏れない
+    expect(qs).not.toContain('k=')
   })
 
   it('自治体モードURLをデコードする', () => {
@@ -40,8 +44,8 @@ describe('#44 Municipality URL encoding/decoding', () => {
     expect(state.selectedMunicipality.bbox).toEqual({
       south: 34.69, west: 135.51, north: 34.73, east: 135.54
     })
-    expect(state.simpleSearch.category).toBe('cafe')
-    expect(state.simpleSearch.keyword).toBe('コーヒー')
+    expect(state.municipalitySearch.category).toBe('cafe')
+    expect(state.municipalitySearch.keyword).toBe('コーヒー')
   })
 
   it('round-trip: encode → decode で状態が一致する', () => {
@@ -49,7 +53,8 @@ describe('#44 Municipality URL encoding/decoding', () => {
       searchMode: 'simple',
       searchSource: 'municipality',
       selectedMunicipality: { code: '131016', name: '千代田区', bbox: { south: 35.67, west: 139.74, north: 35.70, east: 139.78 } },
-      simpleSearch: { category: 'restaurant', keyword: '', location: '' },
+      municipalitySearch: { category: 'restaurant', keyword: '' },
+      simpleSearch: { category: '', keyword: '', location: '' },
       advancedSearch: { tags: [], keyword: '', useAnd: true },
       bbox: { south: 35.67, west: 139.74, north: 35.70, east: 139.78 }
     }
@@ -58,6 +63,6 @@ describe('#44 Municipality URL encoding/decoding', () => {
     expect(restored.searchSource).toBe('municipality')
     expect(restored.selectedMunicipality.code).toBe('131016')
     expect(restored.selectedMunicipality.bbox).toEqual(original.bbox)
-    expect(restored.simpleSearch.category).toBe('restaurant')
+    expect(restored.municipalitySearch.category).toBe('restaurant')
   })
 })

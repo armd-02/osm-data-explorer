@@ -14,7 +14,8 @@ import StatusBanner from './components/StatusBanner'
 import { decodeURLToState } from './utils/urlState'
 import { getMapInstance } from './hooks/useMapRef'
 import { useSearch } from './hooks/useSearch'
-import { resolveSearchBbox } from './utils/searchBbox'
+import { buildSearchCriteria } from './utils/searchCriteria'
+import SearchActionButton from './components/SearchActionButton'
 import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
 
 // メインタブ定義
@@ -56,6 +57,8 @@ function App() {
           return { ...state, searchSource: action.payload }
         case 'SET_MUNICIPALITY':
           return { ...state, selectedMunicipality: action.payload }
+        case 'SET_MUNICIPALITY_SEARCH':
+          return { ...state, municipalitySearch: { ...state.municipalitySearch, ...action.payload } }
         default:
           return state
       }
@@ -73,7 +76,8 @@ function App() {
       fetchMeta: null,
       activeResultId: null,
       searchSource: 'map',
-      selectedMunicipality: null
+      selectedMunicipality: null,
+      municipalitySearch: { category: '', keyword: '' }
     }
   )
 
@@ -90,6 +94,7 @@ function App() {
       if (urlState.bbox) dispatch({ type: 'SET_BBOX', payload: urlState.bbox })
       if (urlState.searchSource) dispatch({ type: 'SET_SEARCH_SOURCE', payload: urlState.searchSource })
       if (urlState.selectedMunicipality) dispatch({ type: 'SET_MUNICIPALITY', payload: urlState.selectedMunicipality })
+      if (urlState.municipalitySearch) dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: urlState.municipalitySearch })
     }
   }, [dispatch])
 
@@ -163,22 +168,23 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
   const draggingRef = React.useRef(false)
   const draggingVRef = React.useRef(false) // (#45) 縦リサイズ用
 
-  // (#47) 検索実行 — スクロール外ボタンから呼ばれる
-  const handleSearch = React.useCallback(() => {
-    if (state.searchSource === 'municipality') {
-      // 自治体モード: 選択中の自治体BBOXで検索
-      if (!state.selectedMunicipality) return
-      dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'municipality' })
-      search(state.selectedMunicipality.bbox)
-    } else {
-      // 地図モード: 地図表示範囲をBBOXとして使用
-      dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'map' })
-      const map = getMapInstance()
-      const mapBounds = map ? map.getBounds() : null
-      const searchBbox = resolveSearchBbox(state.bbox, mapBounds)
-      search(searchBbox)
-    }
-  }, [state, dispatch, search])
+  // (#47) 検索実行 — フォームのスクロール領域の外にあるボタンから呼ばれる。
+  // クリック時点の state と地図表示範囲で条件スナップショットを生成し、
+  // dispatch の直後に旧stateを読む競合を排除する。
+  const makeCriteria = () => {
+    const map = getMapInstance()
+    const mapBounds = map ? map.getBounds() : null
+    return buildSearchCriteria(state, { mapBounds })
+  }
+
+  const handleSearchClick = () => {
+    const criteria = makeCriteria()
+    if (!criteria.ok) return // ボタン側でdisableされているが念のため
+    search(criteria)
+  }
+
+  // 現在の検索条件スナップショット（ボタンのdisable判定・理由表示用）
+  const criteria = makeCriteria()
 
   // (#41-3) Pointer Eventsでリサイズ（マウス/タッチ/ペン対応）
   // pointercancel・アンマウント時のイベント解除に対応
@@ -319,11 +325,20 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
           </button>
           <span className="text-xs font-medium text-slate-500">検索条件</span>
           {state.bbox && (
-            <span className="text-[10px] text-slate-400 ml-auto">
+            <span className="text-[10px] text-slate-400 min-w-0 max-w-[260px] truncate hidden md:inline-block">
               範囲: {state.bbox.south.toFixed(4)}°N, {state.bbox.west.toFixed(4)}°E 〜 {state.bbox.north.toFixed(4)}°N, {state.bbox.east.toFixed(4)}°E
             </span>
           )}
-          <ShareButton />
+          {/* (#47) 検索アクション — フォームのスクロール領域の外で常に視認可能 */}
+          <div className="ml-auto flex items-center gap-2">
+            <SearchActionButton
+              criteria={criteria}
+              status={state.status}
+              onSearch={handleSearchClick}
+              onCancel={cancel}
+            />
+            <ShareButton />
+          </div>
         </div>
         {!searchCollapsed && (
           <div className="px-3 mt-1 overflow-y-auto h-[calc(100%-28px)]">

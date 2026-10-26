@@ -1,40 +1,39 @@
 import React, { useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { useSearch } from '../hooks/useSearch'
 import { checkBboxSize } from '../utils/geo'
-import { getMapInstance } from '../hooks/useMapRef'
-import { resolveSearchBbox } from '../utils/searchBbox'
 import SimpleSearch from './SimpleSearch'
 import AdvancedSearch from './AdvancedSearch'
 import MunicipalitySearch from './MunicipalitySearch'
 
 function SearchPanel() {
   const { state, dispatch } = useApp()
-  const { search, cancel } = useSearch()
   const { searchMode, bbox, searchSource } = state
+
+  /**
+   * (#44/#47) 検索ソース切替
+   * 地図モードへ切替時は選択済み自治体をクリアし、
+   * 旧モードの自治体BBOX・カテゴリを誤用しないようにする。
+   */
+  const switchSource = (source) => {
+    if (source === 'map') {
+      dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'map' })
+      dispatch({ type: 'SET_MUNICIPALITY', payload: null })
+    } else {
+      dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'municipality' })
+    }
+  }
 
   const bboxWarning = useMemo(() => {
     if (!bbox) return null
     return checkBboxSize(bbox).tooLarge ? checkBboxSize(bbox) : null
   }, [bbox])
 
-  /**
-   * (#41) 地図モードの検索実行
-   */
-  const handleMapSearch = () => {
-    dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'map' })
-    const map = getMapInstance()
-    const mapBounds = map ? map.getBounds() : null
-    const searchBbox = resolveSearchBbox(state.bbox, mapBounds)
-    search(searchBbox)
-  }
-
   return (
     <div className="p-4 space-y-4">
       {/* (#44) 検索ソース切替 */}
       <div className="flex rounded-lg bg-slate-100 p-1">
         <button
-          onClick={() => dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'municipality' })}
+          onClick={() => switchSource('municipality')}
           className={`flex-1 py-1.5 text-sm rounded-md transition-all ${
             searchSource === 'municipality'
               ? 'bg-white text-slate-800 shadow-sm font-medium'
@@ -44,7 +43,7 @@ function SearchPanel() {
           自治体で検索
         </button>
         <button
-          onClick={() => dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'map' })}
+          onClick={() => switchSource('map')}
           className={`flex-1 py-1.5 text-sm rounded-md transition-all ${
             searchSource === 'map'
               ? 'bg-white text-slate-800 shadow-sm font-medium'
@@ -114,8 +113,6 @@ function SearchPanel() {
               </p>
             )}
           </div>
-
-          {/* (#47) 検索ボタンはApp.jsxのスクロール外に表示 */}
         </>
       )}
     </div>
