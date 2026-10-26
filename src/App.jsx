@@ -12,6 +12,7 @@ import BatchMatch from './components/BatchMatch'
 import AboutPanel from './components/AboutPanel'
 import StatusBanner from './components/StatusBanner'
 import { decodeURLToState } from './utils/urlState'
+import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
 
 // メインタブ定義
 const MAIN_TABS = [
@@ -83,6 +84,7 @@ function App() {
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
+      <BatchMatchProvider>
       <Layout>
         <div className="flex flex-col h-full min-h-screen">
           {/* ===== Top Tab Bar ===== */}
@@ -130,6 +132,7 @@ function App() {
           </div>
         </div>
       </Layout>
+      </BatchMatchProvider>
     </AppContext.Provider>
   )
 }
