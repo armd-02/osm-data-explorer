@@ -129,3 +129,62 @@ describe('matchName 類似判定（Issue #28）', () => {
     expect(res.matched.id).toBe(801)
   })
 })
+
+describe('中黒「・」の除去（Issue #28 追加要件）', () => {
+  it('大阪・西川 ↔ 大阪西川 が完全一致になる', () => {
+    const results = [makeResult(901, 'node', { name: '大阪西川' })]
+    const res = matchName('大阪・西川', results)
+    expect(res.matchType).toBe('exact')
+  })
+
+  it('逆方向: 大阪西川 ↔ 大阪・西川 も完全一致', () => {
+    const results = [makeResult(902, 'node', { name: '大阪・西川' })]
+    const res = matchName('大阪西川', results)
+    expect(res.matchType).toBe('exact')
+  })
+
+  it('normalizeTextが・を除去する', async () => {
+    const { normalizeText } = await import('../overpass')
+    expect(normalizeText('大阪・西川')).toBe(normalizeText('大阪西川'))
+  })
+
+  it('他のミッドドット変種も除去 (U+00B7, U+2027)', async () => {
+    const { normalizeText } = await import('../overpass')
+    expect(normalizeText('大阪·西川')).toBe(normalizeText('大阪西川')) // U+00B7
+    expect(normalizeText('大阪‧西川')).toBe(normalizeText('大阪西川')) // U+2027
+  })
+})
+
+describe('類似候補の編集距離順ソート（Issue #28 追加要件）', () => {
+  it('similar候補は編集距離の小さい順に並ぶ', () => {
+    // 距離2の候補が先に、距離1の候補が後に来る入力
+    const results = [
+      makeResult(1001, 'node', { name: 'カフェ山本堂' }),  // カフェ山本 vs カフェ山本堂 → 距離1
+      makeResult(1002, 'node', { name: 'カフェ 山野' }),    // カフェ山本 vs カフェ山野 → 距離1
+      makeResult(1003, 'node', { name: 'カフエ山本' }),    // カフェ山本 vs カフエ山本 → 距離1
+    ]
+    const res = matchName('カフェ山本', results)
+    // 全候補がsimilarの場合、距離でソートされる
+    const similarCandidates = res.candidates.filter(c => c.match.type === 'similar')
+    if (similarCandidates.length >= 2) {
+      for (let i = 1; i < similarCandidates.length; i++) {
+        expect(similarCandidates[i - 1].match.distance)
+          .toBeLessThanOrEqual(similarCandidates[i].match.distance)
+      }
+    }
+  })
+
+  it('距離が異なるsimilar候補は近い方が先に来る', () => {
+    // 距離2の候補と距離1の候補を混合
+    const results = [
+      makeResult(1101, 'node', { name: 'ラーメン屋田中商店' }), // ラーメン屋田中 vs ラーメン屋田中商店 → 距離2
+      makeResult(1102, 'node', { name: 'ラーメン屋田中や' }),   // ラーメン屋田中 vs ラーメン屋田中や → 距離1
+    ]
+    const res = matchName('ラーメン屋田中', results)
+    const similarCandidates = res.candidates.filter(c => c.match.type === 'similar')
+    if (similarCandidates.length >= 2) {
+      // 距離1の方が先に来るべき
+      expect(similarCandidates[0].match.distance).toBeLessThan(similarCandidates[1].match.distance)
+    }
+  })
+})

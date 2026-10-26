@@ -422,8 +422,8 @@ export function normalizeText(str) {
   text = text.replace(/[\uFF21-\uFF3A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
   text = text.replace(/[\uFF41-\uFF5A]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
 
-  // 記号・空白を除去
-  text = text.replace(/[\s\-_.~\^\/\\|@#$%&*+<>[\]{}()]/g, '')
+  // 記号・空白を除去（中黒「・」も包含）
+  text = text.replace(/[\s\-_.~\^\/\\|@#$%&*+<>[\]{}()\u30FB\u00B7\u2027]/g, '')
 
   return text.trim()
 }

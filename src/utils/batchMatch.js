@@ -137,7 +137,14 @@ export function matchName(name, results) {
   // 候補をソート（exact > partial > similar）
   // 注意: typeOrder['exact'] が 0 なので ?? を使用する（|| だと 0 がfalsy扱いされる）
   const typeOrder = { exact: 0, partial: 1, similar: 2 }
-  candidates.sort((a, b) => (typeOrder[a.match.type] ?? 3) - (typeOrder[b.match.type] ?? 3))
+  candidates.sort((a, b) => {
+    const typeDiff = (typeOrder[a.match.type] ?? 3) - (typeOrder[b.match.type] ?? 3)
+    if (typeDiff !== 0) return typeDiff
+    // 同種内は編集距離の小さい順（similarのみdistanceを持つ）
+    const distA = a.match.distance ?? Infinity
+    const distB = b.match.distance ?? Infinity
+    return distA - distB
+  })
 
   if (candidates.length === 0) {
     return { matchType: 'none', candidates: [], matched: null }
