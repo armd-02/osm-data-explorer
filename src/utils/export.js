@@ -10,7 +10,7 @@
  * - ヘッダーが最初の行にあり、メタデータは末尾に配置
  */
 export function toCSV(results, meta = {}) {
-  const MAIN_TAGS = ['name', 'name:ja', 'cuisine', 'opening_hours', 'phone', 'website', 'email', 'addr:street', 'addr:housenumber', 'addr:city', 'addr:postcode']
+  const MAIN_TAGS = ['name', 'name:ja', 'amenity', 'shop', 'tourism', 'leisure', 'office', 'healthcare', 'craft', 'cuisine', 'opening_hours', 'phone', 'website', 'email', 'addr:street', 'addr:housenumber', 'addr:city', 'addr:postcode']
 
   // どのタグ列を含むか（結果中出现したもののみ）
   const activeTags = MAIN_TAGS.filter(tag => tag !== 'name' && results.some(r => r.tags?.[tag]))
@@ -118,11 +118,12 @@ export function downloadFile(content, filename, mimeType) {
 
 /**
  * 結果をCSVとしてダウンロード
+ * (#44) prefixパラメータでファイル名をカスタマイズ可能
  */
-export function downloadCSV(results, meta) {
+export function downloadCSV(results, meta, prefix = 'osm-results') {
   const csv = toCSV(results, meta)
   const dateStr = new Date().toISOString().slice(0, 10)
-  downloadFile(csv, `osm-results-${dateStr}.csv`, 'text/csv;charset=utf-8')
+  downloadFile(csv, `${prefix}-${dateStr}.csv`, 'text/csv;charset=utf-8')
 }
 
 /**

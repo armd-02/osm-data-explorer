@@ -12,6 +12,8 @@ function ResultsPanel() {
 
   const [nameFilter, setNameFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [catFilter, setCatFilter] = useState('all') // (#44) POIカテゴリ絞り込み
+  const [websiteFilter, setWebsiteFilter] = useState(false) // (#44) 公式サイト有無
   const [sortDir, setSortDir] = useState('none') // 'none' | 'name_asc' | 'name_desc'
 
   // 絞り込み + ソート
@@ -35,6 +37,16 @@ function ResultsPanel() {
       filtered = filtered.filter(r => r.type === typeFilter)
     }
 
+    // (#44) POIカテゴリ絞り込み（amenity/shop/tourism等）
+    if (catFilter !== 'all') {
+      filtered = filtered.filter(r => r.tags?.[catFilter])
+    }
+
+    // (#44) 公式サイト有無絞り込み
+    if (websiteFilter) {
+      filtered = filtered.filter(r => r.tags?.['website'] || r.tags?.['official_website'])
+    }
+
     // ソート
     if (sortDir === 'name_asc') {
       filtered = [...filtered].sort((a, b) => (a.name || '〜').localeCompare(b.name || '〜', 'ja'))
@@ -43,7 +55,7 @@ function ResultsPanel() {
     }
 
     return filtered
-  }, [results, nameFilter, typeFilter, sortDir])
+  }, [results, nameFilter, typeFilter, catFilter, websiteFilter, sortDir])
 
   const makeOsmId = (r) => `${r.type}/${r.id}`
 
@@ -98,7 +110,7 @@ function ResultsPanel() {
           )}
         </div>
         {/* 絞り込み・ソート */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input
             type="text"
             value={nameFilter}
@@ -106,6 +118,20 @@ function ResultsPanel() {
             placeholder="名称で絞り込み"
             className="px-2 py-1 text-[11px] border border-slate-200 rounded w-32 focus:outline-none focus:ring-1 focus:ring-primary-300"
           />
+          <select
+            value={catFilter}
+            onChange={(e) => setCatFilter(e.target.value)}
+            className="px-1.5 py-1 text-[11px] border border-slate-200 rounded focus:outline-none"
+          >
+            <option value="all">カテゴリ:全て</option>
+            <option value="amenity">施設(amenity)</option>
+            <option value="shop">店舗(shop)</option>
+            <option value="tourism">観光(tourism)</option>
+            <option value="leisure">レジャー</option>
+            <option value="office">オフィス</option>
+            <option value="healthcare">医療</option>
+            <option value="craft">工房</option>
+          </select>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
@@ -116,6 +142,15 @@ function ResultsPanel() {
             <option value="way">way</option>
             <option value="relation">relation</option>
           </select>
+          <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={websiteFilter}
+              onChange={(e) => setWebsiteFilter(e.target.checked)}
+              className="w-3 h-3"
+            />
+            🌐公式サイト
+          </label>
           <button
             onClick={() => setSortDir(sortDir === 'name_asc' ? 'name_desc' : 'name_asc')}
             className={`px-2 py-1 text-[11px] border rounded transition-colors ${
@@ -124,9 +159,9 @@ function ResultsPanel() {
           >
             名前順 {sortDir === 'name_asc' ? '↑' : sortDir === 'name_desc' ? '↓' : '↕'}
           </button>
-          {(nameFilter || typeFilter !== 'all' || sortDir !== 'none') && (
+          {(nameFilter || typeFilter !== 'all' || catFilter !== 'all' || websiteFilter || sortDir !== 'none') && (
             <button
-              onClick={() => { setNameFilter(''); setTypeFilter('all'); setSortDir('none') }}
+              onClick={() => { setNameFilter(''); setTypeFilter('all'); setCatFilter('all'); setWebsiteFilter(false); setSortDir('none') }}
               className="text-[10px] text-slate-400 hover:text-red-500"
             >
               リセット
@@ -146,7 +181,7 @@ function ResultsPanel() {
           <thead className="bg-slate-50 sticky top-0 z-10">
             <tr>
               <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">施設名</th>
-              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">型</th>
+              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">カテゴリ</th>
               <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">OSM ID</th>
               <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap min-w-[120px]">主要タグ</th>
             </tr>
@@ -165,14 +200,14 @@ function ResultsPanel() {
                 <td className="px-2 py-1.5 text-slate-800 max-w-[160px] truncate">
                   {result.name || <span className="text-slate-400">（名前のない要素）</span>}
                 </td>
-                <td className="px-2 py-1.5">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                    result.type === 'node' ? 'bg-green-100 text-green-700'
-                    : result.type === 'way' ? 'bg-blue-100 text-blue-700'
-                    : 'bg-purple-100 text-purple-700'
-                  }`}>
-                    {result.type}
-                  </span>
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  {result.tags?.['amenity'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">{result.tags['amenity']}</span>}
+                  {result.tags?.['shop'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">{result.tags['shop']}</span>}
+                  {result.tags?.['tourism'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700">{result.tags['tourism']}</span>}
+                  {result.tags?.['leisure'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-lime-50 text-lime-700">{result.tags['leisure']}</span>}
+                  {result.tags?.['office'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{result.tags['office']}</span>}
+                  {result.tags?.['healthcare'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700">{result.tags['healthcare']}</span>}
+                  {result.tags?.['craft'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">{result.tags['craft']}</span>}
                 </td>
                 <td className="px-2 py-1.5 whitespace-nowrap">
                   <a
