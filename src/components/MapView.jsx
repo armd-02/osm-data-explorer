@@ -213,12 +213,6 @@ function MapView() {
           地図上の表示は {MAX_MAP_MARKERS} 件まで（全 {results.length.toLocaleString()} 件）。検索結果一覧・集計・CSV/GeoJSON出力は全件対応です。
         </div>
       )}
-      {/* BBOX未設定時の案内 */}
-      {!bbox && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] bg-blue-50 border border-blue-200 text-blue-800 text-xs px-3 py-1.5 rounded-md shadow-sm">
-          検索範囲が未設定です。「☐ 範囲指定」または「この範囲を設定」で指定してください。
-        </div>
-      )}
     </div>
   )
 }
