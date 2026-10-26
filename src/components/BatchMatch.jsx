@@ -4,6 +4,7 @@ import { useBatchMatch } from '../context/BatchMatchContext.jsx'
 import { parseNameList, batchMatch, matchResultsToCSV } from '../utils/batchMatch'
 import { matchResultsToLocationCSV } from '../utils/locationCsv'
 import { downloadFile } from '../utils/export'
+import { parsePreviousYearCSV, verifyPreviousIds, verificationToCSV, getStatusLabel } from '../utils/verifyIds'
 import L from 'leaflet'
 
 /**
@@ -20,6 +21,11 @@ function BatchMatch() {
 
   const { inputText, matchResults, selections, activeIndex, previewCandidate, processing } = bmState
   const { results: osmResults } = appState
+
+  // (#26) 前年度CSV検証
+  const [prevEntries, setPrevEntries] = useState(null)
+  const [verificationResults, setVerificationResults] = useState(null)
+  const [showVerification, setShowVerification] = useState(false)
 
   // 照合実行
   const handleMatch = useCallback(() => {
@@ -86,6 +92,39 @@ function BatchMatch() {
     reader.readAsText(file, 'utf-8')
     e.target.value = ''
   }, [bmDispatch])
+
+  // (#26) 前年度CSVファイル読み込み
+  const handlePrevFileUpload = useCallback((e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const entries = parsePreviousYearCSV(ev.target.result)
+      setPrevEntries(entries)
+      if (entries.length === 0) {
+        alert('前年度CSVから有効なエントリを読み込めませんでした。\n必須カラム: input_name, osm_type, osm_id')
+      } else {
+        setShowVerification(true)
+      }
+    }
+    reader.readAsText(file, 'utf-8')
+    e.target.value = ''
+  }, [])
+
+  // (#26) 検証実行
+  const handleVerify = useCallback(() => {
+    if (!prevEntries || !osmResults) return
+    const results = verifyPreviousIds(prevEntries, osmResults)
+    setVerificationResults(results)
+  }, [prevEntries, osmResults])
+
+  // (#26) 検証結果CSV出力
+  const handleDownloadVerification = useCallback(() => {
+    if (!verificationResults) return
+    const csv = verificationToCSV(verificationResults, { fetchedAt: new Date().toISOString() })
+    const dateStr = new Date().toISOString().slice(0, 10)
+    downloadFile(csv, `osm-verify-${dateStr}.csv`, 'text/csv;charset=utf-8')
+  }, [verificationResults])
 
   // サマリー計算
   const summary = useMemo(() => {
@@ -194,6 +233,62 @@ function BatchMatch() {
         <p className="px-3 py-1 text-[10px] text-slate-500 bg-white border-b border-slate-100 shrink-0">
           地図用CSVは確定済みの候補だけに座標を付与。未確認・候補なしは空欄で残します（way/relationは代表座標）。
         </p>
+      )}
+
+      {/* (#26) 前年度CSV検証セクション */}
+      {showVerification && prevEntries && (
+        <div className="px-3 py-2 border-b border-slate-200 bg-amber-50 shrink-0">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] font-medium text-amber-800">📋 前年度ID再検証</span>
+            <span className="text-[10px] text-amber-700">{prevEntries.length}件読み込み</span>
+            <button
+              onClick={handleVerify}
+              disabled={!osmResults || osmResults.length === 0}
+              className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white text-[10px] rounded font-medium"
+            >
+              検証実行
+            </button>
+            {verificationResults && (
+              <button
+                onClick={handleDownloadVerification}
+                className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] rounded font-medium"
+              >
+                ⬇ 検証CSV
+              </button>
+            )}
+            <button
+              onClick={() => { setShowVerification(false); setPrevEntries(null); setVerificationResults(null) }}
+              className="ml-auto text-[10px] text-slate-400 hover:text-red-500"
+            >
+              ✕ クローズ
+            </button>
+          </div>
+          {/* 検証結果サマリー */}
+          {verificationResults && (
+            <div className="flex gap-2 text-[10px] text-amber-800">
+              <span>変更なし: {verificationResults.filter(r => r.status === 'unchanged').length}</span>
+              <span>名称変更: {verificationResults.filter(r => r.status === 'name_changed').length}</span>
+              <span>位置違い: {verificationResults.filter(r => r.status === 'location_diff').length}</span>
+              <span>BBOX外: {verificationResults.filter(r => r.status === 'not_in_bbox').length}</span>
+            </div>
+          )}
+          {!osmResults || osmResults.length === 0 ? (
+            <p className="text-[10px] text-amber-600 mt-1">先に「施設検索」でBBOX内のOSMデータを取得してください。</p>
+          ) : null}
+        </div>
+      )}
+
+      {/* 前年度CSV読み込みボタン（上部バーのCSVボタン横に追加） */}
+      {!showVerification && (
+        <div className="px-3 py-1.5 border-b border-slate-100 bg-slate-50 shrink-0 flex items-center gap-2">
+          <label className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] rounded cursor-pointer transition-colors">
+            📋 前年度CSV（type+ID）
+            <input type="file" accept=".csv" onChange={handlePrevFileUpload} className="hidden" />
+          </label>
+          <span className="text-[10px] text-slate-400">
+            前年度のOSM ID対応表を読み込み、現在の検索結果と照合して変更・移転を検出します
+          </span>
+        </div>
       )}
 
       {/* 3列メインエリア */}
