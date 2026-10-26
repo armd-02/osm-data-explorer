@@ -195,12 +195,21 @@ export function matchResultsToCSV(matchResults) {
       const m = r.matched
       const status = r.confirmed ? '確認済み' : '要確認'
       const matchLabel = r.matchType === 'exact' ? '完全一致' : r.matchType === 'partial' ? '部分一致' : '類似'
-      const row = [
-        String(r.index), r.inputName, status,
-        matchLabel, m.type, `${m.type}/${m.id}`, m.url,
-        m.name || '', String(r.candidates.length)
-      ]
-      lines.push(row.map(csvEscape).join(','))
+      if (m) {
+        const row = [
+          String(r.index), r.inputName, status,
+          matchLabel, m.type, `${m.type}/${m.id}`, m.url,
+          m.name || '', String(r.candidates.length)
+        ]
+        lines.push(row.map(csvEscape).join(','))
+      } else {
+        // 未確認（候補あり但未選択）: osm関連欄は空
+        const row = [
+          String(r.index), r.inputName, status,
+          matchLabel, '', '', '', '', String(r.candidates.length)
+        ]
+        lines.push(row.map(csvEscape).join(','))
+      }
     }
   }
 

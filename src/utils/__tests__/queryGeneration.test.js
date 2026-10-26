@@ -107,10 +107,10 @@ describe('buildAdvancedQuery', () => {
     assertValidOverpassQL(query)
   })
 
-  it('existsモード: [phone=*]', () => {
+  it('existsモード: [phone]', () => {
     const tags = [{ key: 'phone', value: '', mode: 'exists' }]
     const { query } = buildAdvancedQuery(BBOX, tags, '', true)
-    expect(query).toContain(`node[phone=*](${BBOX_STR})`)
+    expect(query).toContain(`node[phone](${BBOX_STR})`)
     assertValidOverpassQL(query)
   })
 

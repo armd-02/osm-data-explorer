@@ -110,7 +110,7 @@ export function buildAdvancedQuery(bbox, tags, keyword, useAnd) {
       if (!tag.key) return null
       const safeKey = escapeStr(tag.key)
       if (tag.mode === 'equals') return `${safeKey}=${quoteValue(tag.value || '')}`
-      if (tag.mode === 'exists') return `${safeKey}=*`
+      if (tag.mode === 'exists') return safeKey
       if (tag.mode === 'not_exists') return `!${safeKey}`
       return null
     })

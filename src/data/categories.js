@@ -229,7 +229,7 @@ export function categoryToQueryFilter(category) {
     } else if (tag.values && tag.values.length === 1) {
       return `${safeKey}=${quoteValue(tag.values[0])}`
     }
-    return `${safeKey}=*`
+    return safeKey
   })
 
   if (logic === 'and') {
