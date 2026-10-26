@@ -13,6 +13,8 @@ import AboutPanel from './components/AboutPanel'
 import StatusBanner from './components/StatusBanner'
 import { decodeURLToState } from './utils/urlState'
 import { getMapInstance } from './hooks/useMapRef'
+import { useSearch } from './hooks/useSearch'
+import { resolveSearchBbox } from './utils/searchBbox'
 import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
 
 // メインタブ定義
@@ -152,10 +154,28 @@ function App() {
  *        下部: 施設一覧（65-75%）+ 地図/詳細（25-35%）
  */
 function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setShowMap }) {
-  const { state } = React.useContext(AppContext)
+  const { state, dispatch } = React.useContext(AppContext)
+  const { search, cancel } = useSearch()
   const [splitPct, setSplitPct] = React.useState(68) // (#41) リサイズ可能な分割比率
   const splitRef = React.useRef(null) // スプリットコンテナref
   const draggingRef = React.useRef(false)
+
+  // (#47) 検索実行 — スクロール外ボタンから呼ばれる
+  const handleSearch = React.useCallback(() => {
+    if (state.searchSource === 'municipality') {
+      // 自治体モード: 選択中の自治体BBOXで検索
+      if (!state.selectedMunicipality) return
+      dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'municipality' })
+      search(state.selectedMunicipality.bbox)
+    } else {
+      // 地図モード: 地図表示範囲をBBOXとして使用
+      dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'map' })
+      const map = getMapInstance()
+      const mapBounds = map ? map.getBounds() : null
+      const searchBbox = resolveSearchBbox(state.bbox, mapBounds)
+      search(searchBbox)
+    }
+  }, [state, dispatch, search])
 
   // (#41-3) Pointer Eventsでリサイズ（マウス/タッチ/ペン対応）
   // pointercancel・アンマウント時のイベント解除に対応
@@ -256,9 +276,29 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
           <ShareButton />
         </div>
         {!searchCollapsed && (
-          <div className="search-criteria-body px-3 mt-2 max-h-[35vh] overflow-y-auto">
-            <SearchPanel />
-          </div>
+          <>
+            <div className="search-criteria-body px-3 mt-2 max-h-[35vh] overflow-y-auto">
+              <SearchPanel />
+            </div>
+            {/* (#47) 検索ボタンをスクロール外に配置 */}
+            <div className="px-3 py-2 border-t border-slate-100 flex gap-2 shrink-0">
+              <button
+                onClick={handleSearch}
+                disabled={state.status === 'loading'}
+                className="flex-1 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {state.status === 'loading' ? '検索中...' : '検索する'}
+              </button>
+              {state.status === 'loading' && (
+                <button
+                  onClick={cancel}
+                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  中止
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
 

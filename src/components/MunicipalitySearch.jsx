@@ -204,27 +204,7 @@ export default function MunicipalitySearch() {
         </div>
       )}
 
-      {/* 検索ボタン */}
-      <button
-        onClick={handleSearch}
-        disabled={!selectedMun || isLoading || (selectedMun && (() => {
-          const b = selectedMun.bbox
-          const latKm = (b.north - b.south) * 111
-          const lonKm = (b.east - b.west) * 111 * Math.cos(((b.north + b.south) / 2) * Math.PI / 180)
-          return latKm * lonKm > 40000
-        })())}
-        className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-      >
-        {isLoading ? '検索中...' : '検索する'}
-      </button>
-      {isLoading && (
-        <button
-          onClick={cancel}
-          className="w-full py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          中止
-        </button>
-      )}
+      {/* (#47) 検索ボタンはApp.jsxのスクロール外に表示 */}
     </div>
   )
 }

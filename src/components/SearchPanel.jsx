@@ -115,24 +115,7 @@ function SearchPanel() {
             )}
           </div>
 
-          {/* Search button */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleMapSearch}
-              disabled={state.status === 'loading'}
-              className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              {state.status === 'loading' ? '検索中...' : '検索する'}
-            </button>
-            {state.status === 'loading' && (
-              <button
-                onClick={cancel}
-                className="px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                中止
-              </button>
-            )}
-          </div>
+          {/* (#47) 検索ボタンはApp.jsxのスクロール外に表示 */}
         </>
       )}
     </div>
