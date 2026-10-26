@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { useBatchMatch } from '../context/BatchMatchContext.jsx'
 import { parseNameList, batchMatch, matchResultsToCSV } from '../utils/batchMatch'
+import { matchResultsToLocationCSV } from '../utils/locationCsv'
 import { downloadFile } from '../utils/export'
 import L from 'leaflet'
 
@@ -68,6 +69,14 @@ function BatchMatch() {
     downloadFile(csv, `osm-batch-match-${dateStr}.csv`, 'text/csv;charset=utf-8')
   }, [matchResults])
 
+  // 地図制作用CSV: 確定した候補だけ座標・OSM IDを出力 (#42)
+  const handleDownloadLocations = useCallback(() => {
+    if (!matchResults) return
+    const csv = matchResultsToLocationCSV(matchResults)
+    const dateStr = new Date().toISOString().slice(0, 10)
+    downloadFile(csv, `map-locations-${dateStr}.csv`, 'text/csv;charset=utf-8')
+  }, [matchResults])
+
   // ファイル読込
   const handleFileUpload = useCallback((e) => {
     const file = e.target.files?.[0]
@@ -107,6 +116,9 @@ function BatchMatch() {
     <div className="batch-workspace h-full flex flex-col">
       {/* 上部バー: 入力 + 操作 + サマリー */}
       <div className="px-3 py-2 border-b border-slate-200 bg-white space-y-2 shrink-0">
+        <p className="text-[11px] text-slate-600">
+          ①「施設検索」で対象地域を検索 → ②店名リストを貼り付け／CSV取込 → ③照合 → ④候補を地図で確認し「確定」 → ⑤地図用CSVを保存
+        </p>
         {/* 入力行 */}
         <div className="flex items-start gap-2">
           <textarea
@@ -160,14 +172,29 @@ function BatchMatch() {
               ))}
             </div>
             <button
-              onClick={handleDownload}
+              onClick={handleDownloadLocations}
               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] rounded font-medium"
+              title="入力順を維持して出力。未確認・候補なしの座標は空欄です"
             >
-              ⬇ CSV出力
+              ⬇ 地図用CSV（確定 {summary.confirmed} 件）
+            </button>
+            <button
+              onClick={handleDownload}
+              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] rounded font-medium"
+              title="以前からの一括照合CSV形式"
+            >
+              照合CSV
             </button>
           </div>
         )}
       </div>
+
+      {/* 地図用CSVでは、未確認行の座標・OSM IDは出力しない */}
+      {summary && (
+        <p className="px-3 py-1 text-[10px] text-slate-500 bg-white border-b border-slate-100 shrink-0">
+          地図用CSVは確定済みの候補だけに座標を付与。未確認・候補なしは空欄で残します（way/relationは代表座標）。
+        </p>
+      )}
 
       {/* 3列メインエリア */}
       <div className="batch-columns flex flex-1 min-h-0">

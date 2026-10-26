@@ -18,7 +18,7 @@ import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
 // メインタブ定義
 const MAIN_TABS = [
   { id: 'search', label: '施設検索' },
-  { id: 'batch', label: '一括照合' },
+  { id: 'batch', label: '店名→座標CSV' },
   { id: 'stats', label: '集計・出力' },
   { id: 'about', label: 'について' },
 ]
