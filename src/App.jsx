@@ -156,9 +156,12 @@ function App() {
 function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setShowMap }) {
   const { state, dispatch } = React.useContext(AppContext)
   const { search, cancel } = useSearch()
-  const [splitPct, setSplitPct] = React.useState(68) // (#41) リサイズ可能な分割比率
+  const [splitPct, setSplitPct] = React.useState(68) // (#41) 左右分割比率
+  const [topPct, setTopPct] = React.useState(35) // (#45) 上下分割比率（検索条件の割合）
   const splitRef = React.useRef(null) // スプリットコンテナref
+  const workspaceRef = React.useRef(null) // ワークスペース全体ref
   const draggingRef = React.useRef(false)
+  const draggingVRef = React.useRef(false) // (#45) 縦リサイズ用
 
   // (#47) 検索実行 — スクロール外ボタンから呼ばれる
   const handleSearch = React.useCallback(() => {
@@ -220,17 +223,59 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
     document.addEventListener('pointercancel', onUp)
   }, [])
 
-  // (#41-3) アンマウント時のイベント解除
+  // (#45) 縦リサイズハンドル
+  const vCleanupRef = React.useRef(null)
+
+  const handleVResizeStart = React.useCallback((e) => {
+    e.preventDefault()
+    draggingVRef.current = true
+    const workspace = workspaceRef.current
+    if (!workspace) return
+
+    if (vCleanupRef.current) { vCleanupRef.current(); vCleanupRef.current = null }
+
+    const onMove = (ev) => {
+      if (!draggingVRef.current) return
+      const rect = workspace.getBoundingClientRect()
+      let pct = ((ev.clientY - rect.top) / rect.height) * 100
+      // 最小高さ制限: 上部≥15%, 下部≥40%
+      pct = Math.max(15, Math.min(60, pct))
+      setTopPct(pct)
+    }
+
+    const onUp = () => {
+      draggingVRef.current = false
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+      if (vCleanupRef.current === cleanup) vCleanupRef.current = null
+      const map = getMapInstance()
+      if (map) map.invalidateSize()
+    }
+
+    const cleanup = () => {
+      draggingVRef.current = false
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+      if (vCleanupRef.current === cleanup) vCleanupRef.current = null
+    }
+
+    vCleanupRef.current = cleanup
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
+  }, [])
+
+  // (#41-3/#45) アンマウント時のイベント解除
   React.useEffect(() => {
     return () => {
-      if (cleanupRef.current) {
-        cleanupRef.current()
-        cleanupRef.current = null
-      }
+      if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null }
+      if (vCleanupRef.current) { vCleanupRef.current(); vCleanupRef.current = null }
     }
   }, [])
 
-  // (#41-3) ResizeObserver: コンテナ幅変化に合わせてinvalidateSize()
+  // (#41-3/#45) ResizeObserver: コンテナ幅・高さ変化に合わせてinvalidateSize()
   // ドラッグ中もタイルが欠けないよう、連続再描画を抑制して呼び出す
   React.useEffect(() => {
     if (!splitRef.current) return
@@ -244,6 +289,8 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
       }, 50)
     })
     observer.observe(splitRef.current)
+    // (#45) ワークスペース全体も監視（縦リサイズ時の高さ変化）
+    if (workspaceRef.current) observer.observe(workspaceRef.current)
     return () => {
       observer.disconnect()
       if (timer) clearTimeout(timer)
@@ -251,14 +298,17 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
   }, [showMap])
 
   return (
-    <div className="search-workspace flex flex-col flex-1 min-h-0">
+    <div ref={workspaceRef} className="search-workspace flex flex-col flex-1 min-h-0">
       {/* Status Banner */}
       <StatusBanner />
       {/* Edit Panel (0件時の導線) */}
       <EditPanel />
 
-      {/* 検索条件（折りたたみ可） */}
-      <div className={`shrink-0 border-b border-slate-200 bg-white transition-all ${searchCollapsed ? 'py-1' : 'py-3'}`}>
+      {/* 検索条件（折りたたみ可 + 縦リサイズ #45） */}
+      <div
+        className={`shrink-0 border-b border-slate-200 bg-white overflow-hidden ${searchCollapsed ? 'py-1' : ''}`}
+        style={!searchCollapsed ? { height: `${topPct}%` } : undefined}
+      >
         <div className="flex items-center gap-2 px-3">
           <button
             onClick={() => setSearchCollapsed(!searchCollapsed)}
@@ -276,31 +326,22 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
           <ShareButton />
         </div>
         {!searchCollapsed && (
-          <>
-            <div className="search-criteria-body px-3 mt-2 max-h-[35vh] overflow-y-auto">
-              <SearchPanel />
-            </div>
-            {/* (#47) 検索ボタンをスクロール外に配置 */}
-            <div className="px-3 py-2 border-t border-slate-100 flex gap-2 shrink-0">
-              <button
-                onClick={handleSearch}
-                disabled={state.status === 'loading'}
-                className="flex-1 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {state.status === 'loading' ? '検索中...' : '検索する'}
-              </button>
-              {state.status === 'loading' && (
-                <button
-                  onClick={cancel}
-                  className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  中止
-                </button>
-              )}
-            </div>
-          </>
+          <div className="px-3 mt-1 overflow-y-auto h-[calc(100%-28px)]">
+            <SearchPanel />
+          </div>
         )}
       </div>
+
+      {/* (#45) 縦リサイズハンドル */}
+      {!searchCollapsed && (
+        <div
+          className="h-4 cursor-row-resize bg-slate-200 hover:bg-primary-300 active:bg-primary-400 transition-colors flex items-center justify-center shrink-0 touch-none"
+          onPointerDown={handleVResizeStart}
+          title="上下にドラッグして検索条件と結果領域の高さを調整"
+        >
+          <div className="w-16 h-1 rounded-full bg-slate-400" />
+        </div>
+      )}
 
       {/* 施設一覧 + 地図 のリサイズ可能スプリットレイアウト (#41) */}
       <div ref={splitRef} className="search-split flex flex-1 min-h-0 relative">
