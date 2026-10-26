@@ -414,14 +414,21 @@ function BatchMatchMap({ matchResults, previewCandidate, activeRow }) {
       }
     }
 
-    // プレビューなしなら確定済みの位置
-    if (!target && activeRow?.matched) {
+    // プレビューなしなら、確定済みの場合のみ表示 (#39: confirmedフラグで判定)
+    if (!target && activeRow?.confirmed && activeRow.matched) {
       if (activeRow.matched.lat != null && activeRow.matched.lon != null) {
-        target = { lat: activeRow.matched.lat, lon: activeRow.matched.lon, label: activeRow.matched.name || '確定', confirmed: true }
+        target = { lat: activeRow.matched.lat, lon: activeRow.matched.lon, label: activeRow.matched.name || '確定済', confirmed: true }
       }
     }
 
-    if (!target) return
+    // 対象がない場合は既存マーカーを削除 (#39: マーカー残存防止)
+    if (!target) {
+      if (markerRef.current) {
+        mapRef.current.removeLayer(markerRef.current)
+        markerRef.current = null
+      }
+      return
+    }
 
     mapRef.current.panTo([target.lat, target.lon], { animate: true })
 
@@ -438,8 +445,11 @@ function BatchMatchMap({ matchResults, previewCandidate, activeRow }) {
         iconAnchor: [7, 7]
       })
     }).addTo(mapRef.current)
-    markerRef.current.bindTooltip(target.label, { direction: 'top', offset: [0, -8] })
-  }, [previewCandidate, activeRow?.matched?.lat, activeRow?.matched?.lon, matchResults])
+    // #38: 安全なテキストツールチップ（textContentでHTML解釈しない）
+    const safeLabel = document.createElement('span')
+    safeLabel.textContent = target.label ?? ''
+    markerRef.current.bindTooltip(safeLabel, { direction: 'top', offset: [0, -8] })
+  }, [previewCandidate, activeRow?.confirmed, activeRow?.matched?.lat, activeRow?.matched?.lon, matchResults])
 
   return <div ref={mapContainerRef} className="w-full h-full" />
 }
