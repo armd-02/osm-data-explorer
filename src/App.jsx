@@ -149,12 +149,18 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
   const splitRef = React.useRef(null) // スプリットコンテナref
   const draggingRef = React.useRef(false)
 
-  // (#41) Pointer Eventsでリサイズ（マウス/タッチ/ペン対応）
+  // (#41-3) Pointer Eventsでリサイズ（マウス/タッチ/ペン対応）
+  // pointercancel・アンマウント時のイベント解除に対応
+  const cleanupRef = React.useRef(null) // 現在のcleanup関数
+
   const handleResizeStart = React.useCallback((e) => {
     e.preventDefault()
     draggingRef.current = true
     const container = splitRef.current
     if (!container) return
+
+    // 既存のcleanupがあれば先に実行
+    if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null }
 
     const onMove = (ev) => {
       if (!draggingRef.current) return
@@ -165,18 +171,56 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
       setSplitPct(pct)
     }
 
-    const onUp = () => {
+    const cleanup = () => {
       draggingRef.current = false
       document.removeEventListener('pointermove', onMove)
       document.removeEventListener('pointerup', onUp)
-      // Leafletサイズ再調整
+      document.removeEventListener('pointercancel', onUp)
+      if (cleanupRef.current === cleanup) cleanupRef.current = null
+    }
+
+    const onUp = () => {
+      cleanup()
+      // Leafletサイズ再調整（最終）
       const map = getMapInstance()
       if (map) map.invalidateSize()
     }
 
+    cleanupRef.current = cleanup
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
   }, [])
+
+  // (#41-3) アンマウント時のイベント解除
+  React.useEffect(() => {
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current()
+        cleanupRef.current = null
+      }
+    }
+  }, [])
+
+  // (#41-3) ResizeObserver: コンテナ幅変化に合わせてinvalidateSize()
+  // ドラッグ中もタイルが欠けないよう、連続再描画を抑制して呼び出す
+  React.useEffect(() => {
+    if (!splitRef.current) return
+    let timer = null
+    const observer = new ResizeObserver(() => {
+      if (timer) return // 連続呼び出しを抑制
+      timer = setTimeout(() => {
+        timer = null
+        const map = getMapInstance()
+        if (map) map.invalidateSize()
+      }, 50)
+    })
+    observer.observe(splitRef.current)
+    return () => {
+      observer.disconnect()
+      if (timer) clearTimeout(timer)
+    }
+  }, [showMap])
 
   return (
     <div className="search-workspace flex flex-col flex-1 min-h-0">
@@ -220,14 +264,14 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
           <ResultsPanel />
         </div>
 
-        {/* ドラッグハンドル (#41) */}
+        {/* ドラッグハンドル (#41-2): 見た目4px、ヒット領域16px */}
         {showMap && (
           <div
-            className="w-1.5 cursor-col-resize bg-slate-200 hover:bg-primary-300 active:bg-primary-400 transition-colors flex items-center justify-center shrink-0 touch-none"
+            className="w-4 cursor-col-resize bg-slate-200 hover:bg-primary-300 active:bg-primary-400 transition-colors flex items-center justify-center shrink-0 touch-none"
             onPointerDown={handleResizeStart}
             title="ドラッグでリサイズ"
           >
-            <div className="w-0.5 h-8 bg-slate-400 rounded-full" />
+            <div className="w-1 h-8 bg-slate-400 rounded-full" />
           </div>
         )}
 

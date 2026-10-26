@@ -37,7 +37,8 @@ function MapView() {
   const leafletRef = useRef(null)   // Leaflet Mapインスタンスref
   const bboxLayerRef = useRef(null)
   const markersRef = useRef([])
-  const needsFitRef = useRef(false)
+  // (#41-1) 初回BBOX復元時のみfitBounds。URL復元がマウント後に発生しても対応。
+  const hasFitInitialBboxRef = useRef(false)
   const { state, dispatch } = useApp()
   const { results, activeResultId, bbox } = state
 
@@ -64,10 +65,9 @@ function MapView() {
     leafletRef.current = map
     setMapInstance(map)
 
-    // URL復元BBOXならfitBoundsする
-    if (initialBbox) {
-      needsFitRef.current = true
-    }
+    // (#41-1) 初回BBOX復元フラグ: false = まだfitしていない
+    // BBOX overlay effectが初回bbox出現時にfitしてtrueにする
+    hasFitInitialBboxRef.current = false
 
     // (#29) 地図のmoveend/zoomendでBBOXを更新しない
 
@@ -116,10 +116,12 @@ function MapView() {
         dashArray: '6'
       }).addTo(map)
 
-      // URLからBBOXを復元した場合、地図をその範囲に合わせる
-      if (needsFitRef.current) {
+      // (#41-1) 初回BBOX復元時のみfitBounds
+      // マウント後にURLからBBOXが復元された場合でも、一度だけ地図を合わせる。
+      // その後の検索・panToではfitBoundsしない。
+      if (!hasFitInitialBboxRef.current) {
         map.fitBounds(bounds, { padding: [20, 20] })
-        needsFitRef.current = false
+        hasFitInitialBboxRef.current = true
       }
     }
   }, [bbox])

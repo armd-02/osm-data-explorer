@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { useSearch } from '../hooks/useSearch'
 import { checkBboxSize } from '../utils/geo'
 import { getMapInstance } from '../hooks/useMapRef'
+import { resolveSearchBbox } from '../utils/searchBbox'
 import SimpleSearch from './SimpleSearch'
 import AdvancedSearch from './AdvancedSearch'
 
@@ -23,23 +24,9 @@ function SearchPanel() {
    */
   const handleSearch = () => {
     const map = getMapInstance()
-    if (map) {
-      const bounds = map.getBounds()
-      const mapBbox = {
-        south: bounds.getSouth(),
-        west: bounds.getWest(),
-        north: bounds.getNorth(),
-        east: bounds.getEast()
-      }
-      search(mapBbox)
-    } else {
-      // 地図非表示時は state.bbox（前回検索範囲）を使用
-      if (state.bbox) {
-        search(state.bbox)
-      } else {
-        search(null) // useSearch内でエラー案内
-      }
-    }
+    const mapBounds = map ? map.getBounds() : null
+    const searchBbox = resolveSearchBbox(state.bbox, mapBounds)
+    search(searchBbox) // nullの場合useSearch内でエラー案内
   }
 
   return (
