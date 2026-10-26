@@ -86,7 +86,7 @@ function App() {
     <AppContext.Provider value={{ state, dispatch }}>
       <BatchMatchProvider>
       <Layout>
-        <div className="flex flex-col h-full min-h-screen">
+        <div className="flex flex-col h-full min-h-0">
           {/* ===== Top Tab Bar ===== */}
           <nav className="flex items-center gap-1 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
             <span className="text-sm font-semibold text-slate-800 mr-3">OSMデータ検索</span>
@@ -171,7 +171,7 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
           <ShareButton />
         </div>
         {!searchCollapsed && (
-          <div className="px-3 mt-2">
+          <div className="px-3 mt-2 max-h-[35vh] overflow-y-auto">
             <SearchPanel />
           </div>
         )}

@@ -11,6 +11,7 @@ const initialState = {
   matchResults: null,   // batchMatch()の戻り値
   selections: {},       // { index: candidateIdx }
   activeIndex: null,    // 現在選択中の対象施設index
+  previewCandidate: null, // { index, candidateIdx } — 地図プレビュー対象
   processing: false,
 }
 
@@ -23,7 +24,9 @@ function batchMatchReducer(state, action) {
     case 'SET_PROCESSING':
       return { ...state, processing: action.payload }
     case 'SELECT_FACILITY':
-      return { ...state, activeIndex: action.payload }
+      return { ...state, activeIndex: action.payload, previewCandidate: null }
+    case 'SET_PREVIEW':
+      return { ...state, previewCandidate: action.payload }
     case 'CONFIRM_CANDIDATE': {
       const { index, candidateIdx } = action.payload
       if (!state.matchResults) return state
@@ -61,6 +64,8 @@ function batchMatchReducer(state, action) {
       )
       return { ...state, matchResults: newResults }
     }
+    case 'CLEAR_PREVIEW':
+      return { ...state, previewCandidate: null }
     case 'RESET':
       return initialState
     default:

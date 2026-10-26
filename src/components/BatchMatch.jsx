@@ -1,8 +1,9 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { useBatchMatch } from '../context/BatchMatchContext.jsx'
-import { matchResultsToCSV } from '../utils/batchMatch'
+import { parseNameList, batchMatch, matchResultsToCSV } from '../utils/batchMatch'
 import { downloadFile } from '../utils/export'
+import L from 'leaflet'
 
 /**
  * 一括照合 (#31)
@@ -16,7 +17,7 @@ function BatchMatch() {
   const [showMap, setShowMap] = useState(true)
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'unconfirmed' | 'confirmed' | 'none'
 
-  const { inputText, matchResults, selections, activeIndex, processing } = bmState
+  const { inputText, matchResults, selections, activeIndex, previewCandidate, processing } = bmState
   const { results: osmResults } = appState
 
   // 照合実行
@@ -25,7 +26,6 @@ function BatchMatch() {
       alert('先に「施設検索」タブでBBOXを指定してOSMデータを検索してください。')
       return
     }
-    const { parseNameList, batchMatch } = require('../utils/batchMatch')
     const names = parseNameList(inputText)
     if (names.length === 0) return
 
@@ -41,6 +41,12 @@ function BatchMatch() {
   const handleSelectFacility = useCallback((index) => {
     bmDispatch({ type: 'SELECT_FACILITY', payload: index })
   }, [bmDispatch])
+
+  // 地図プレビュー（確定せずに候補の位置を表示）
+  const handlePreview = useCallback((candidateIdx) => {
+    if (activeIndex == null) return
+    bmDispatch({ type: 'SET_PREVIEW', payload: { index: activeIndex, candidateIdx } })
+  }, [activeIndex, bmDispatch])
 
   // 候補確定
   const handleConfirm = useCallback((candidateIdx) => {
@@ -102,25 +108,27 @@ function BatchMatch() {
       {/* 上部バー: 入力 + 操作 + サマリー */}
       <div className="px-3 py-2 border-b border-slate-200 bg-white space-y-2 shrink-0">
         {/* 入力行 */}
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
+        <div className="flex items-start gap-2">
+          <textarea
             value={inputText}
             onChange={(e) => bmDispatch({ type: 'SET_INPUT_TEXT', payload: e.target.value })}
-            placeholder="施設名を1行に1件入力、またはCSV貼り付け"
-            className="flex-1 px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-400"
+            placeholder={"施設名を1行に1件入力\n例:\nラーメン屋 田中\nカフェ 山本\n薬局 鈴木"}
+            rows={3}
+            className="flex-1 px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-400 resize-none"
           />
-          <label className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded font-medium cursor-pointer transition-colors shrink-0">
-            📁 CSV
-            <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
-          </label>
-          <button
-            onClick={handleMatch}
-            disabled={processing || !inputText.trim()}
-            className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 text-white text-xs rounded font-medium transition-colors shrink-0"
-          >
-            {processing ? '...' : '照合'}
-          </button>
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded font-medium cursor-pointer transition-colors">
+              📁 CSV
+              <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
+            </label>
+            <button
+              onClick={handleMatch}
+              disabled={processing || !inputText.trim()}
+              className="px-3 py-1 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-300 text-white text-xs rounded font-medium transition-colors"
+            >
+              {processing ? '...' : '照合'}
+            </button>
+          </div>
         </div>
 
         {/* サマリー + 絞り込み + 出力 */}
@@ -268,8 +276,8 @@ function BatchMatch() {
                           </span>
                         )}
                       </div>
-                      {/* OSM ID + リンク */}
-                      <div className="flex items-center gap-2 mt-1.5">
+                      {/* OSM ID + リンク + 操作 */}
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                         <a
                           href={`https://www.openstreetmap.org/${c.result.type}/${c.result.id}`}
                           target="_blank"
@@ -278,20 +286,31 @@ function BatchMatch() {
                         >
                           {c.result.type}/{c.result.id}
                         </a>
+                        <button
+                          onClick={() => handlePreview(ci)}
+                          className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                            previewCandidate?.index === activeRow.index && previewCandidate?.candidateIdx === ci
+                              ? 'bg-blue-50 border-blue-300 text-blue-700'
+                              : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-600'
+                          }`}
+                          title="地図で位置を確認（確定しない）"
+                        >
+                          📍
+                        </button>
                         {/* 確定ボタン */}
                         {!isSelected ? (
                           <button
                             onClick={() => handleConfirm(ci)}
                             className="ml-auto px-2 py-0.5 bg-primary-600 hover:bg-primary-700 text-white text-[10px] rounded font-medium"
                           >
-                            この候補で確定
+                            確定
                           </button>
                         ) : (
                           <button
                             onClick={handleUnconfirm}
                             className="ml-auto px-2 py-0.5 bg-slate-200 hover:bg-red-100 hover:text-red-700 text-slate-600 text-[10px] rounded font-medium"
                           >
-                            ✓ 確定済（取り消す）
+                            ✓取り消し
                           </button>
                         )}
                       </div>
@@ -329,7 +348,7 @@ function BatchMatch() {
               </button>
             </div>
             <div className="flex-1 relative min-h-0">
-              <BatchMatchMap activeRow={activeRow} />
+              <BatchMatchMap matchResults={matchResults} previewCandidate={previewCandidate} activeRow={activeRow} />
             </div>
           </div>
         )}
@@ -348,25 +367,28 @@ function BatchMatch() {
 }
 
 /**
- * 一括照合用ミニ地図
- * 選択候補の位置を表示（panToのみ、BBOX変更しない）
+ * 一括照合用ミニ地図 (#35)
+ * プレビュー候補の位置を表示（panToのみ、BBOX変更しない）
+ * 確定済みの位置も表示
  */
-function BatchMatchMap({ activeRow }) {
-  const mapContainerRef = React.useRef(null)
-  const mapRef = React.useRef(null)
-  const markerRef = React.useRef(null)
+function BatchMatchMap({ matchResults, previewCandidate, activeRow }) {
+  const mapContainerRef = useRef(null)
+  const mapRef = useRef(null)
+  const markerRef = useRef(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
-    const L = require('leaflet')
     
     const map = L.map(mapContainerRef.current, {
       center: [34.705, 135.485],
       zoom: 14,
       zoomControl: true,
-      attributionControl: false
+      attributionControl: true  // OSM帰属表示を有効化 (#35)
     })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map)
     mapRef.current = map
 
     return () => {
@@ -375,28 +397,49 @@ function BatchMatchMap({ activeRow }) {
     }
   }, [])
 
-  // 選択候補の位置へpanTo
-  React.useEffect(() => {
-    if (!mapRef.current || !activeRow?.matched) return
-    const { lat, lon } = activeRow.matched
-    if (lat == null || lon == null) return
+  // プレビュー/確定の位置へpanTo
+  useEffect(() => {
+    if (!mapRef.current || !matchResults) return
 
-    mapRef.current.panTo([lat, lon], { animate: true })
+    let target = null
+
+    // プレビュー候補があればそれを優先
+    if (previewCandidate) {
+      const row = matchResults.find(r => r.index === previewCandidate.index)
+      if (row && row.candidates[previewCandidate.candidateIdx]) {
+        const c = row.candidates[previewCandidate.candidateIdx]
+        if (c.result.lat != null && c.result.lon != null) {
+          target = { lat: c.result.lat, lon: c.result.lon, label: c.result.name || '候補', confirmed: false }
+        }
+      }
+    }
+
+    // プレビューなしなら確定済みの位置
+    if (!target && activeRow?.matched) {
+      if (activeRow.matched.lat != null && activeRow.matched.lon != null) {
+        target = { lat: activeRow.matched.lat, lon: activeRow.matched.lon, label: activeRow.matched.name || '確定', confirmed: true }
+      }
+    }
+
+    if (!target) return
+
+    mapRef.current.panTo([target.lat, target.lon], { animate: true })
 
     // マーカー更新
-    const L = require('leaflet')
     if (markerRef.current) {
       mapRef.current.removeLayer(markerRef.current)
       markerRef.current = null
     }
-    markerRef.current = L.marker([lat, lon], {
+    const color = target.confirmed ? '#059669' : '#dc2626'
+    markerRef.current = L.marker([target.lat, target.lon], {
       icon: L.divIcon({
-        html: '<div style="width:14px;height:14px;background:#dc2626;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>',
+        html: `<div style="width:14px;height:14px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7]
       })
     }).addTo(mapRef.current)
-  }, [activeRow?.matched?.lat, activeRow?.matched?.lon])
+    markerRef.current.bindTooltip(target.label, { direction: 'top', offset: [0, -8] })
+  }, [previewCandidate, activeRow?.matched?.lat, activeRow?.matched?.lon, matchResults])
 
   return <div ref={mapContainerRef} className="w-full h-full" />
 }

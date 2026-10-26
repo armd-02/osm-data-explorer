@@ -1,38 +1,63 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
 
+/**
+ * 検索結果テーブル (#37)
+ * 施設名・OSM型・ID・タグを列で比較可能
+ * 絞り込み・ソート・行選択→地図移動
+ */
 function ResultsPanel() {
   const { state, dispatch } = useApp()
   const { results, status, activeResultId, fetchMeta } = state
 
-  // 集計サマリー（将来の集計機能 #9 用）
-  const stats = useMemo(() => {
-    if (results.length === 0) return null
+  const [nameFilter, setNameFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [sortDir, setSortDir] = useState('none') // 'none' | 'name_asc' | 'name_desc'
 
-    const byType = {}
-    const missingName = []
-    const missingTags = {}
+  // 絞り込み + ソート
+  const displayResults = useMemo(() => {
+    if (!results) return []
+    let filtered = results
 
-    results.forEach((r) => {
-      byType[r.type] = (byType[r.type] || 0) + 1
-      if (!r.name) missingName.push(r)
-      if (r.tags) {
-        for (const key of ['phone', 'website', 'opening_hours', 'email']) {
-          if (!r.tags[key]) {
-            missingTags[key] = (missingTags[key] || 0) + 1
-          }
-        }
-      }
-    })
+    // 名称絞り込み
+    if (nameFilter.trim()) {
+      const q = nameFilter.trim().toLowerCase()
+      filtered = filtered.filter(r => {
+        const name = (r.name || '').toLowerCase()
+        const tags = r.tags || {}
+        const nameJa = (tags['name:ja'] || '').toLowerCase()
+        return name.includes(q) || nameJa.includes(q)
+      })
+    }
 
-    return { total: results.length, byType, missingNameCount: missingName.length, missingTags }
-  }, [results])
+    // 型絞り込み
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(r => r.type === typeFilter)
+    }
+
+    // ソート
+    if (sortDir === 'name_asc') {
+      filtered = [...filtered].sort((a, b) => (a.name || '〜').localeCompare(b.name || '〜', 'ja'))
+    } else if (sortDir === 'name_desc') {
+      filtered = [...filtered].sort((a, b) => (b.name || '〜').localeCompare(a.name || '〜', 'ja'))
+    }
+
+    return filtered
+  }, [results, nameFilter, typeFilter, sortDir])
 
   const makeOsmId = (r) => `${r.type}/${r.id}`
 
   const handleSelect = (result) => {
     dispatch({ type: 'SET_ACTIVE_RESULT', payload: makeOsmId(result) })
   }
+
+  // サマリー
+  const stats = useMemo(() => {
+    if (!results || results.length === 0) return null
+    const byType = {}
+    results.forEach(r => { byType[r.type] = (byType[r.type] || 0) + 1 })
+    return { total: results.length, byType }
+  }, [results])
 
   if (status === 'loading') {
     return (
@@ -45,7 +70,7 @@ function ResultsPanel() {
     )
   }
 
-  if (results.length === 0) {
+  if (!results || results.length === 0) {
     return (
       <div className="p-4 flex items-center justify-center h-full">
         <p className="text-sm text-slate-400">検索結果が表示されます</p>
@@ -53,90 +78,128 @@ function ResultsPanel() {
     )
   }
 
+  const MAX_DISPLAY = 500
+  const displayList = displayResults.slice(0, MAX_DISPLAY)
+
   return (
     <div className="h-full flex flex-col">
-      {/* ヘッダー: サマリー */}
-      <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-4 text-xs text-slate-600 flex-wrap">
-        <span className="font-medium">{stats.total.toLocaleString()}件</span>
-        {stats.byType && Object.entries(stats.byType).map(([type, count]) => (
-          <span key={type}>{type}: {count.toLocaleString()}</span>
-        ))}
-        {stats.missingNameCount > 0 && (
-          <span className="text-amber-600">名前なし: {stats.missingNameCount.toLocaleString()}件</span>
-        )}
-        {fetchMeta?.fetchedAt && (
-          <span className="text-slate-400 ml-auto">
-            {new Date(fetchMeta.fetchedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-            {fetchMeta.cached && ' ⚡'}
-          </span>
-        )}
+      {/* サマリー + 絞り込みバー */}
+      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 space-y-1.5 shrink-0">
+        <div className="flex items-center gap-3 text-xs text-slate-600">
+          <span className="font-medium">{stats.total.toLocaleString()}件</span>
+          {Object.entries(stats.byType).map(([type, count]) => (
+            <span key={type}>{type}: {count}</span>
+          ))}
+          {fetchMeta?.fetchedAt && (
+            <span className="text-slate-400 ml-auto text-[10px]">
+              {new Date(fetchMeta.fetchedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+              {fetchMeta.cached && ' ⚡'}
+            </span>
+          )}
+        </div>
+        {/* 絞り込み・ソート */}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={nameFilter}
+            onChange={(e) => setNameFilter(e.target.value)}
+            placeholder="名称で絞り込み"
+            className="px-2 py-1 text-[11px] border border-slate-200 rounded w-32 focus:outline-none focus:ring-1 focus:ring-primary-300"
+          />
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="px-1.5 py-1 text-[11px] border border-slate-200 rounded focus:outline-none"
+          >
+            <option value="all">全て</option>
+            <option value="node">node</option>
+            <option value="way">way</option>
+            <option value="relation">relation</option>
+          </select>
+          <button
+            onClick={() => setSortDir(sortDir === 'name_asc' ? 'name_desc' : 'name_asc')}
+            className={`px-2 py-1 text-[11px] border rounded transition-colors ${
+              sortDir !== 'none' ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            名前順 {sortDir === 'name_asc' ? '↑' : sortDir === 'name_desc' ? '↓' : '↕'}
+          </button>
+          {(nameFilter || typeFilter !== 'all' || sortDir !== 'none') && (
+            <button
+              onClick={() => { setNameFilter(''); setTypeFilter('all'); setSortDir('none') }}
+              className="text-[10px] text-slate-400 hover:text-red-500"
+            >
+              リセット
+            </button>
+          )}
+          {displayResults.length !== stats.total && (
+            <span className="text-[10px] text-slate-400 ml-auto">
+              {displayResults.length.toLocaleString()}/{stats.total.toLocaleString()}件
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* 結果一覧 */}
-      <div className="flex-1 overflow-y-auto">
-        <ul className="divide-y divide-slate-100">
-          {results.slice(0, 500).map((result) => (
-            <li
-              key={`${result.type}-${result.id}`}
-              onClick={() => handleSelect(result)}
-              className={`px-4 py-2 cursor-pointer transition-colors ${
-                activeResultId === makeOsmId(result)
-                  ? 'bg-primary-50 border-l-2 border-primary-500'
-                  : 'hover:bg-slate-50'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
-                  result.type === 'node' ? 'bg-green-100 text-green-700'
-                  : result.type === 'way' ? 'bg-blue-100 text-blue-700'
-                  : 'bg-purple-100 text-purple-700'
-                }`}>
-                  {result.type}
-                </span>
-                <span className="text-sm text-slate-800 truncate flex-1">
+      {/* テーブル */}
+      <div className="flex-1 overflow-auto min-h-0">
+        <table className="w-full text-[11px] border-collapse">
+          <thead className="bg-slate-50 sticky top-0 z-10">
+            <tr>
+              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">施設名</th>
+              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">型</th>
+              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">OSM ID</th>
+              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap min-w-[120px]">主要タグ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayList.map(result => (
+              <tr
+                key={makeOsmId(result)}
+                onClick={() => handleSelect(result)}
+                className={`border-t border-slate-100 cursor-pointer transition-colors ${
+                  activeResultId === makeOsmId(result)
+                    ? 'bg-primary-50'
+                    : 'hover:bg-slate-50'
+                }`}
+              >
+                <td className="px-2 py-1.5 text-slate-800 max-w-[160px] truncate">
                   {result.name || <span className="text-slate-400">（名前のない要素）</span>}
-                </span>
-                {result.matchType && (
-                  <span className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
-                    result.matchType === 'exact' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
-                  }`} title={result.matchType === 'exact' ? '完全一致' : '部分一致'}>
-                    {result.matchType === 'exact' ? '完全' : '部分'}
+                </td>
+                <td className="px-2 py-1.5">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    result.type === 'node' ? 'bg-green-100 text-green-700'
+                    : result.type === 'way' ? 'bg-blue-100 text-blue-700'
+                    : 'bg-purple-100 text-purple-700'
+                  }`}>
+                    {result.type}
                   </span>
-                )}
-                <a
-                  href={`https://www.openstreetmap.org/${result.type}/${result.id}`}
-                  target="_blank"
-                  rel="noopener"
-                  className="text-[10px] text-primary-600 hover:text-primary-800 shrink-0"
-                  title="OpenStreetMapで開く"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  🔗
-                </a>
-                <button
-                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(`${result.type}/${result.id}`) }}
-                  className="text-[10px] text-slate-400 hover:text-slate-600 shrink-0"
-                  title="OSM IDをコピー"
-                >
-                  {result.id}
-                </button>
-              </div>
-              {/* タグサマリー */}
-              {result.tags && Object.keys(result.tags).length > 0 && (
-                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  {Object.entries(result.tags)
+                </td>
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  <a
+                    href={`https://www.openstreetmap.org/${result.type}/${result.id}`}
+                    target="_blank"
+                    rel="noopener"
+                    className="text-primary-600 hover:text-primary-800 font-mono"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {result.id}
+                  </a>
+                </td>
+                <td className="px-2 py-1.5 text-slate-500 max-w-[200px] truncate">
+                  {result.tags ? Object.entries(result.tags)
                     .filter(([k]) => !['name', 'name:ja'].includes(k))
-                    .slice(0, 4)
+                    .slice(0, 3)
                     .map(([k, v]) => `${k}=${v}`)
-                    .join(' · ')}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-        {results.length > 500 && (
-          <p className="px-4 py-2 text-xs text-slate-400 text-center">
-            残り {(results.length - 500).toLocaleString()}件は表示していません（全{results.length.toLocaleString()}件）
+                    .join(' · ') : ''}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {displayResults.length > MAX_DISPLAY && (
+          <p className="px-3 py-2 text-[10px] text-slate-400 text-center">
+            残り {(displayResults.length - MAX_DISPLAY).toLocaleString()}件は表示していません
+            （全{displayResults.length.toLocaleString()}件。CSV/GeoJSONで全件出力できます）
           </p>
         )}
       </div>
