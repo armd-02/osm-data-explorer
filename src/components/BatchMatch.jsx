@@ -104,7 +104,7 @@ function BatchMatch() {
   const activeRow = activeIndex != null ? matchResults?.find(r => r.index === activeIndex) : null
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="batch-workspace h-full flex flex-col">
       {/* 上部バー: 入力 + 操作 + サマリー */}
       <div className="px-3 py-2 border-b border-slate-200 bg-white space-y-2 shrink-0">
         {/* 入力行 */}
@@ -170,7 +170,7 @@ function BatchMatch() {
       </div>
 
       {/* 3列メインエリア */}
-      <div className="flex flex-1 min-h-0">
+      <div className="batch-columns flex flex-1 min-h-0">
         {/* 左: 対象施設リスト (30%) */}
         <div className={`${showMap ? 'w-[30%]' : 'w-[35%]'} border-r border-slate-200 flex flex-col min-h-0 transition-all`}>
           <div className="px-2 py-1.5 bg-slate-50 border-b border-slate-100 text-[10px] text-slate-500 shrink-0">
