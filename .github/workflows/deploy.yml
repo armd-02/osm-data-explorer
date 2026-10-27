@@ -40,6 +40,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Copy Pages config files
+        # (#47追跡) _headers（index.html no-cache）を公開ディレクトリにコピー。
+        # Actionsデプロイはdist/のみを公開するため、リポジトリ直下の_headersでは効かない。
+        run: cp _headers dist/
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
