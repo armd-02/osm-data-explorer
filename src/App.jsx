@@ -59,8 +59,8 @@ function App() {
           // 単一値として振る舞い、「カテゴリを変えたのにモード切替で古い値に
           // 戻る（カテゴリが変わってない）」問題を解消する。
           const src = action.payload
-          const ms = state.municipalitySearch || { category: '', keyword: '' }
-          const ss = state.simpleSearch || { category: '', keyword: '', location: '' }
+          const ms = state.municipalitySearch || { category: '', keyword: '', cuisine: '' }
+          const ss = state.simpleSearch || { category: '', keyword: '', location: '', cuisine: '' }
           if (src === 'municipality') {
             return {
               ...state,
@@ -68,7 +68,8 @@ function App() {
               municipalitySearch: {
                 ...ms,
                 category: ss.category,
-                keyword: ss.keyword
+                keyword: ss.keyword,
+                cuisine: ss.cuisine
               }
             }
           }
@@ -79,7 +80,8 @@ function App() {
               simpleSearch: {
                 ...ss,
                 category: ms.category,
-                keyword: ms.keyword
+                keyword: ms.keyword,
+                cuisine: ms.cuisine
               }
             }
           }
@@ -95,7 +97,7 @@ function App() {
     },
     {
       searchMode: 'simple',
-      simpleSearch: { category: '', keyword: '', location: '' },
+      simpleSearch: { category: '', keyword: '', location: '', cuisine: '' },
       advancedSearch: { tags: [], keyword: '', useAnd: true },
       bbox: null,
       status: 'idle',
@@ -107,7 +109,7 @@ function App() {
       activeResultId: null,
       searchSource: 'map',
       selectedMunicipality: null,
-      municipalitySearch: { category: '', keyword: '' }
+      municipalitySearch: { category: '', keyword: '', cuisine: '' }
     }
   )
 

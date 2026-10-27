@@ -50,8 +50,8 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
       return fail('too_large', sizeCheck.message, 'より小さい市区町村を選択してください。')
     }
 
-    const ms = state.municipalitySearch || { category: '', keyword: '' }
-    const { query, keyword } = buildPoiQuery(bbox, ms.category, ms.keyword)
+    const ms = state.municipalitySearch || { category: '', keyword: '', cuisine: '' }
+    const { query, keyword } = buildPoiQuery(bbox, ms.category, ms.keyword, ms.cuisine)
     return {
       ok: true,
       bbox,
@@ -59,6 +59,7 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
       searchMode: 'simple',
       category: ms.category,
       keyword,
+      cuisine: ms.cuisine,
       query
     }
   }
@@ -104,8 +105,8 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
   }
 
   // かんたん検索
-  const ss = state.simpleSearch || { category: '', keyword: '' }
-  const { query, keyword } = buildSimpleQuery(bbox, ss.category, ss.keyword)
+  const ss = state.simpleSearch || { category: '', keyword: '', cuisine: '' }
+  const { query, keyword } = buildSimpleQuery(bbox, ss.category, ss.keyword, ss.cuisine)
   return {
     ok: true,
     bbox,
@@ -113,6 +114,7 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
     searchMode: 'simple',
     category: ss.category,
     keyword,
+    cuisine: ss.cuisine,
     query
   }
 }

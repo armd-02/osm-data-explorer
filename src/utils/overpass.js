@@ -3,7 +3,7 @@
  * UIからクエリ生成を分離したデータ取得層
  */
 import { getOverpassUrl, getEndpointLabel, APP_CONFIG, FALLBACK_ENDPOINT_ORDER } from '../config'
-import { getCategoryById, categoryToQueryFilter } from '../data/categories'
+import { getCategoryById, categoryToQueryFilter, isFoodCategory } from '../data/categories'
 
 // ============================================================
 // メモリキャッシュ
@@ -77,15 +77,27 @@ function buildCategoryFilter(category) {
  * - カテゴリ指定時: categoryToQueryFilter の結果に基づいてunion/ANDを生成
  * - カテゴリなし: BBOX内全要素
  */
-export function buildSimpleQuery(bbox, category, keyword) {
+/**
+ * (#54) cuisineフィルタのAND条件を生成（飲食カテゴリ指定時のみ有効）
+ * 料理（cuisine）は施設の種類（カテゴリ）と直交する独立次元のため、
+ * カテゴリフィルタに [cuisine=X] をANDで連結する。
+ * 非飲食カテゴリ・カテゴリ未指定時は無効（UIでも非表示・自動クリアする）。
+ */
+function buildCuisineAndFilters(category, cuisine) {
+  if (!cuisine || !category || !isFoodCategory(category)) return []
+  return [`cuisine=${quoteValue(cuisine)}`]
+}
+
+export function buildSimpleQuery(bbox, category, keyword, cuisine = '') {
   const { south, west, north, east } = bbox
   const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
 
   const catFilter = buildCategoryFilter(category)
+  const cuisineAnd = buildCuisineAndFilters(category, cuisine)
 
   let body
   if (catFilter && (catFilter.unionFilters.length > 0 || (catFilter.andFilters && catFilter.andFilters.length > 0))) {
-    body = buildFilterBody(bboxStr, catFilter)
+    body = buildFilterBody(bboxStr, catFilter, cuisineAnd)
   } else {
     // カテゴリなし: 全要素
     body = `  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});`
@@ -100,15 +112,16 @@ export function buildSimpleQuery(bbox, category, keyword) {
  * カテゴリ指定時: buildSimpleQuery と同じロジック
  * カテゴリ未指定: POI対象タグ（amenity/shop/tourism/leisure/office/healthcare/craft）に限定
  */
-export function buildPoiQuery(bbox, category, keyword) {
+export function buildPoiQuery(bbox, category, keyword, cuisine = '') {
   const { south, west, north, east } = bbox
   const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
 
   const catFilter = category ? buildCategoryFilter(category) : null
+  const cuisineAnd = buildCuisineAndFilters(category, cuisine)
 
   let body
   if (catFilter && (catFilter.unionFilters.length > 0 || (catFilter.andFilters && catFilter.andFilters.length > 0))) {
-    body = buildFilterBody(bboxStr, catFilter)
+    body = buildFilterBody(bboxStr, catFilter, cuisineAnd)
   } else {
     // (#44) カテゴリ未指定: POI対象タグに限定（道路・建物等を除外）
     const poiKeys = ['amenity', 'shop', 'tourism', 'leisure', 'office', 'healthcare', 'craft']
@@ -162,18 +175,25 @@ export function buildAdvancedQuery(bbox, tags, keyword, useAnd) {
 
 /**
  * カテゴリフィルタ情報からunion body文字列を生成
+ * (#54) extraAnd: 追加のAND条件配列（cuisineフィルタ等）。
+ *  - OR模式: 各unionブランチの末尾に連結 → (A OR B OR C) AND X
+ *  - AND模式: 連結フィルタの末尾に追加 → A AND B AND X
  */
-function buildFilterBody(bboxStr, catFilter) {
+function buildFilterBody(bboxStr, catFilter, extraAnd = []) {
+  const extra = extraAnd.map(f => `[${f}]`).join('')
   if (catFilter.unionFilters.length > 0) {
-    // OR: 各フィルタをunionの別ブランチに（角括弧をここで追加）
+    // OR: 各フィルタをunionの別ブランチに（角括弧をここで追加）+ 追加AND条件
     return catFilter.unionFilters
-      .flatMap(f => `  node[${f}](${bboxStr});\n  way[${f}](${bboxStr});\n  relation[${f}](${bboxStr});`)
+      .flatMap(f => `  node[${f}]${extra}(${bboxStr});\n  way[${f}]${extra}(${bboxStr});\n  relation[${f}]${extra}(${bboxStr});`)
       .join('\n')
   }
   if (catFilter.andFilters && catFilter.andFilters.length > 0) {
-    // AND: 全フィルタを連結 [f1][f2][f3]
-    const chained = catFilter.andFilters.map(f => `[${f}]`).join('')
+    // AND: 全フィルタを連結 [f1][f2][f3] + 追加AND条件
+    const chained = catFilter.andFilters.map(f => `[${f}]`).join('') + extra
     return `  node${chained}(${bboxStr});\n  way${chained}(${bboxStr});\n  relation${chained}(${bboxStr});`
+  }
+  if (extra) {
+    return `  node${extra}(${bboxStr});\n  way${extra}(${bboxStr});\n  relation${extra}(${bboxStr});`
   }
   return `  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});`
 }

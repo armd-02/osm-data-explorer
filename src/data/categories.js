@@ -34,10 +34,24 @@ export const CATEGORIES = [
   },
   {
     id: 'food_drink',
-    label: '飲食店',
+    label: '飲食店（すべて）',
     tags: [{ key: 'amenity', values: ['cafe', 'restaurant', 'fast_food', 'bar', 'pub', 'izakaya', 'sushi', 'food_court'] }],
     logic: 'or',
-    description: 'カフェ・レストラン・ファストフード・バー・居酒屋など'
+    description: 'カフェ・レストラン・ファストフード・バー・居酒屋など（以下4種の合集合）'
+  },
+  {
+    id: 'fast_food',
+    label: 'ファストフード',
+    tags: [{ key: 'amenity', values: ['fast_food'] }],
+    logic: 'or',
+    description: 'ファストフード・バーガーショップ等'
+  },
+  {
+    id: 'bar_izakaya',
+    label: 'バー・居酒屋',
+    tags: [{ key: 'amenity', values: ['bar', 'pub', 'izakaya'] }],
+    logic: 'or',
+    description: 'バー・パブ・居酒屋'
   },
   {
     id: 'convenience',
@@ -166,20 +180,12 @@ export const CATEGORIES = [
     logic: 'or',
     description: '博物館・美術館・展望台'
   },
-  {
-    id: 'ramen',
-    label: 'ラーメン店',
-    tags: [
-      { key: 'cuisine', values: ['ramen'] },
-      { key: 'amenity', values: ['restaurant', 'fast_food'] }
-    ],
-    logic: 'and',
-    description: 'ラーメン店（cuisine=ramen）'
-  }
 ]
-// 注: 旧スーパーマーケット(shop=supermarket)・ガソリンスタンド(amenity=fuel)エントリは、
+// 注1: 旧スーパーマーケット(shop=supermarket)・ガソリンスタンド(amenity=fuel)エントリは、
 // それぞれコンビニ・スーパー・交通・駅に完全に包含される重複だったため削除。
-// 検索能力は上位カテゴリがカバーする。
+// 注2 (#54): 旧ラーメン店(cuisine=ramen AND amenity)エントリは削除。「カテゴリ＝施設の種類」に
+// 統一し、料理（cuisine）は独立フィルタ（CUISINES）として扱う。旧共有URL c=ramen は
+// urlState.js が「レストラン + cuisine=ramen」として復元する。
 
 /**
  * カテゴリIDからカテゴリオブジェクトを取得
@@ -194,12 +200,47 @@ export function getCategoryById(id) {
  * グループ内の順序はここで制御する（CATEGORIES 配列の順序に依存しない）。
  */
 export const CATEGORY_GROUPS = [
-  { name: '飲食', ids: ['food_drink', 'cafe', 'restaurant', 'ramen'] },
+  { name: '飲食', ids: ['food_drink', 'cafe', 'restaurant', 'fast_food', 'bar_izakaya'] },
   { name: '買い物・薬局', ids: ['retail', 'convenience', 'pharmacy', 'hospital'] },
   { name: '教育・公共施設', ids: ['public_facility', 'school', 'park', 'worship', 'toilets'] },
   { name: '交通・宿泊', ids: ['transport', 'accommodation'] },
   { name: 'レジャー・文化・金融', ids: ['sports', 'museum', 'bank'] }
 ]
+
+/**
+ * (#54) 料理（cuisine）フィルタの選択肢。
+ * カテゴリ（施設の種類）とは直交する独立次元で、飲食カテゴリ選択時に
+ * セレクトで絞り込める。拡張が必要な場合はここに追加する。
+ */
+export const CUISINES = [
+  { value: 'ramen', label: 'ラーメン' },
+  { value: 'udon', label: 'うどん' },
+  { value: 'soba', label: 'そば' },
+  { value: 'sushi', label: '寿司' },
+  { value: 'japanese', label: '和食' },
+  { value: 'pizza', label: 'ピザ' },
+  { value: 'italian', label: 'イタリアン' },
+  { value: 'chinese', label: '中華' },
+  { value: 'korean', label: '韓国' },
+  { value: 'thai', label: 'タイ' },
+  { value: 'indian', label: 'インド' },
+  { value: 'french', label: 'フレンチ' },
+  { value: 'american', label: 'アメリカン' },
+  { value: 'burger', label: 'バーガー' },
+  { value: 'curry', label: 'カレー' },
+  { value: 'teppanyaki', label: '鉄板焼き' },
+  { value: 'okinawan', label: '沖縄' },
+  { value: 'vietnamese', label: 'ベトナム' }
+]
+
+/**
+ * (#54) カテゴリが飲食グループに属するか判定（cuisineフィルタの表示条件）
+ */
+export function isFoodCategory(id) {
+  if (!id) return false
+  const foodGroup = CATEGORY_GROUPS.find((g) => g.name === '飲食')
+  return !!foodGroup && foodGroup.ids.includes(id)
+}
 
 /**
  * ドメイン別にグループ化したカテゴリを返す（セレクトの <optgroup> 描画用）。
@@ -291,8 +332,9 @@ function escapeRegex(str) {
 
 /**
  * 値を適切に引用符で囲む（特殊文字を含む場合のみ）
+ * (#54) cuisineフィルタ値のエスケープにも再利用されるためexport
  */
-function quoteValue(str) {
+export function quoteValue(str) {
   const s = String(str)
   // 特殊文字を含む場合はダブルクォートで囲む
   if (/[",\\\s[\](){}]/.test(s)) {

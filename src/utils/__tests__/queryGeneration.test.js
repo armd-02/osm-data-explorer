@@ -69,11 +69,12 @@ describe('buildSimpleQuery', () => {
     assertValidOverpassQL(query)
   })
 
-  it('ANDカテゴリ(ramen): 連結フィルタ [f1][f2]', () => {
-    const { query } = buildSimpleQuery(BBOX, 'ramen', '')
-    // cuisine と amenity が同じ行に連結
-    expect(query).toContain(`node[cuisine=ramen][amenity~"^(restaurant|fast_food)$"](${BBOX_STR});`)
-    expect(query).toContain(`way[cuisine=ramen][amenity~"^(restaurant|fast_food)$"](${BBOX_STR});`)
+  it('(#54) 旧ラーメンカテゴリIDは未知カテゴリとして扱い、cuisineフィルタと併せて無視される', () => {
+    // 旧URL c=ramen は urlState 層で restaurant+cu=ramen にマッピングされる。
+    // 万一 'ramen' が直接渡されても（未知ID）、クエリ生成は安全に退化する。
+    const { query } = buildSimpleQuery(BBOX, 'ramen', '', 'ramen')
+    expect(query).not.toContain('cuisine')
+    expect(query).toContain(`node(${BBOX_STR});`)
     assertValidOverpassQL(query)
   })
 })
@@ -178,7 +179,14 @@ describe('categoryToQueryFilter', () => {
   })
 
   it('複数tags + logic=and → andFilters 配列（括弧なし）', () => {
-    const cat = CATEGORIES.find(c => c.id === 'ramen')
+    // (#54) 旧ramenカテゴリは削除されたため、合成カテゴリでANDパスを検証
+    const cat = {
+      tags: [
+        { key: 'cuisine', values: ['ramen'] },
+        { key: 'amenity', values: ['restaurant', 'fast_food'] }
+      ],
+      logic: 'and'
+    }
     const result = categoryToQueryFilter(cat)
     expect(result.unionFilters).toHaveLength(0)
     expect(result.andFilters).toHaveLength(2)

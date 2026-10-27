@@ -9,7 +9,7 @@
  * fetch をモックし、ネットワークなしで応答シナリオを検証する。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { executeOverpassQuery, clearCache, parseOverpassResponse } from '../overpass'
+import { executeOverpassQuery, clearCache, parseOverpassResponse, buildSimpleQuery, buildPoiQuery } from '../overpass'
 import { getEndpointLabel } from '../../config'
 
 // ---------- モックヘルパー ----------
@@ -237,5 +237,59 @@ describe('parseOverpassResponse: タグ無しノードの除外', () => {
     expect(results.length).toBe(1)
     expect(results[0].id).toBe(1)
     expect(results[0].tags.highway).toBe('bus_stop')
+  })
+})
+
+// ---------- (#54) cuisineフィルタのクエリ組み込み ----------
+const TEST_BBOX = { south: 34.0, west: 135.0, north: 34.1, east: 135.2 }
+
+describe('cuisineフィルタ（#54: 施設の種類と料理の分離）', () => {
+  it('単一カテゴリ（レストラン）+ ラーメン: [amenity=restaurant][cuisine=ramen] がAND連結される', () => {
+    const { query } = buildSimpleQuery(TEST_BBOX, 'restaurant', '', 'ramen')
+    expect(query).toContain('[amenity=restaurant][cuisine=ramen](')
+  })
+
+  it('複数値ORカテゴリ（飲食店）+ cuisine: unionブランチ末尾に[cuisine=X]がAND連結される', () => {
+    const { query } = buildSimpleQuery(TEST_BBOX, 'food_drink', '', 'sushi')
+    // 8値は1つの正規表現フィルタに統合 → node/way/relation の3ブランチにcuisineがAND連結
+    const count = (query.match(/\[cuisine=sushi\]/g) || []).length
+    expect(count).toBe(3)
+    expect(query).toContain('[amenity~"^(cafe|restaurant|fast_food|bar|pub|izakaya|sushi|food_court)$"][cuisine=sushi](')
+  })
+
+  it('3値ORカテゴリ（バー・居酒屋）+ cuisine: 各ブランチに連結される', () => {
+    const { query } = buildSimpleQuery(TEST_BBOX, 'bar_izakaya', '', 'ramen')
+    expect(query).toContain('[amenity~"^(bar|pub|izakaya)$"][cuisine=ramen](')
+  })
+
+  it('自治体POIクエリでも同じくcuisineがAND連結される', () => {
+    const { query } = buildPoiQuery(TEST_BBOX, 'restaurant', '', 'udon')
+    expect(query).toContain('[amenity=restaurant][cuisine=udon](')
+  })
+
+  it('カテゴリ未指定時はcuisineを無視する（全要素取得を維持）', () => {
+    const { query } = buildSimpleQuery(TEST_BBOX, '', '', 'ramen')
+    expect(query).not.toContain('cuisine')
+    expect(query).toContain('node(34.000000,135.000000,34.100000,135.200000)')
+  })
+
+  it('非飲食カテゴリ（薬局）+ cuisine: 無視される（cuisineは飲食カテゴリのみ）', () => {
+    const { query } = buildSimpleQuery(TEST_BBOX, 'pharmacy', '', 'ramen')
+    expect(query).not.toContain('cuisine')
+    expect(query).toContain('[amenity=pharmacy](')
+  })
+
+  it('cuisine未指定時は従来クエリと同一（後方互換）', () => {
+    const withDefault = buildSimpleQuery(TEST_BBOX, 'restaurant', 'kw')
+    const withEmpty = buildSimpleQuery(TEST_BBOX, 'restaurant', 'kw', '')
+    expect(withDefault.query).toBe(withEmpty.query)
+    expect(withDefault.query).toContain('[amenity=restaurant](')
+    expect(withDefault.query).not.toContain('cuisine')
+  })
+
+  it('特殊文字を含むcuisine値は引用符で囲まれる（Overpass QLエスケープ）', () => {
+    // 空白を含む値は "..." で囲む必要がある
+    const { query } = buildSimpleQuery(TEST_BBOX, 'restaurant', '', 'fish & chips')
+    expect(query).toContain('[cuisine="fish & chips"]')
   })
 })
