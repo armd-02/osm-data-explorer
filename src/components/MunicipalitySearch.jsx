@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { getGroupedCategories } from '../data/categories'
+import { getGroupedCategories, CUISINES, isFoodCategory } from '../data/categories'
 
 /**
  * (#44) 自治体別施設検索
@@ -17,7 +17,15 @@ export default function MunicipalitySearch() {
   const [prefCode, setPrefCode] = useState('')
   const [munCode, setMunCode] = useState('')
   // (#47) カテゴリ・キーワードは親stateに上げ、検索ボタンと共有する
-  const { category, keyword } = state.municipalitySearch || { category: '', keyword: '' }
+  const { category, keyword, cuisine } = state.municipalitySearch || { category: '', keyword: '', cuisine: '' }
+
+  // (#54) 飲食カテゴリ選択時のみcuisineフィルタを表示。非飲食カテゴリ・未選択時は自動クリア
+  const showCuisine = isFoodCategory(category)
+  useEffect(() => {
+    if (cuisine && !isFoodCategory(category)) {
+      dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: { cuisine: '' } })
+    }
+  }, [category, cuisine, dispatch])
 
   // 自治体JSONをフェッチ（初回のみ）
   useEffect(() => {
@@ -180,6 +188,23 @@ export default function MunicipalitySearch() {
               ))}
             </select>
           </div>
+
+          {/* (#54) 料理フィルタ: 飲食カテゴリ選択時のみ表示 */}
+          {showCuisine && (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">料理（任意）</label>
+              <select
+                value={cuisine}
+                onChange={(e) => updateMunicipalitySearch('cuisine', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">すべて（料理で絞らない）</option>
+                {CUISINES.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">キーワード（任意）</label>

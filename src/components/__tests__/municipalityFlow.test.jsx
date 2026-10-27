@@ -370,3 +370,143 @@ describe('自治体モード E2E（カテゴリ反映の検証）', () => {
     expect(overpassCalls[0]).toContain('amenity=cafe')
   }, IT_TIMEOUT)
 })
+
+describe('#54 料理（cuisine）フィルタ E2E', () => {
+  it('地図モード: レストラン+ラーメン → クエリに [amenity=restaurant][cuisine=ramen] がAND連結される', async () => {
+    // BBOXをURLで設定（地図boundsに依存しない）
+    renderApp('b=34.800000,135.400000,34.900000,135.600000')
+
+    // カテゴリを「レストラン」にすると料理selectが出現
+    const catSelect = getSelectByLabel('探したいカテゴリ')
+    fireEvent.change(catSelect, { target: { value: 'restaurant' } })
+    const cuisineSelect = await waitFor(() => {
+      const s = getSelectByLabel('料理（任意）')
+      expect(s).toBeTruthy()
+      return s
+    }, { timeout: 3000 })
+
+    // 料理を「ラーメン」に選択
+    fireEvent.change(cuisineSelect, { target: { value: 'ramen' } })
+    await waitFor(() => expect(cuisineSelect.value).toBe('ramen'))
+
+    // 検索 → クエリに両条件がAND連結される
+    fireEvent.click(screen.getByText('検索する'))
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    expect(overpassCalls[0]).toContain('[amenity=restaurant][cuisine=ramen]')
+  }, IT_TIMEOUT)
+
+  it('旧共有URL c=ramen: 「レストラン+ラーメン」に自動マッピングされ検索に使える', async () => {
+    renderApp('c=ramen&b=34.800000,135.400000,34.900000,135.600000')
+
+    // カテゴリselectが「レストラン」、料理selectが「ラーメン」に復元される
+    const catSelect = await waitFor(() => {
+      const s = getSelectByLabel('探したいカテゴリ')
+      expect(s.value).toBe('restaurant')
+      return s
+    }, { timeout: 3000 })
+    const cuisineSelect = await waitFor(() => {
+      const s = getSelectByLabel('料理（任意）')
+      expect(s).toBeTruthy()
+      expect(s.value).toBe('ramen')
+      return s
+    }, { timeout: 3000 })
+
+    // 検索 → 旧ラーメンカテゴリと同等のクエリ
+    fireEvent.click(screen.getByText('検索する'))
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    expect(overpassCalls[0]).toContain('[amenity=restaurant][cuisine=ramen]')
+  }, IT_TIMEOUT)
+
+  it('非飲食カテゴリに切り替えると料理selectが消え、cuisineは自動クリアされる', async () => {
+    renderApp('b=34.800000,135.400000,34.900000,135.600000')
+
+    // レストラン+ラーメンを設定
+    const catSelect = getSelectByLabel('探したいカテゴリ')
+    fireEvent.change(catSelect, { target: { value: 'restaurant' } })
+    const cuisineSelect = await waitFor(() => {
+      const s = getSelectByLabel('料理（任意）')
+      expect(s).toBeTruthy()
+      return s
+    }, { timeout: 3000 })
+    fireEvent.change(cuisineSelect, { target: { value: 'ramen' } })
+    await waitFor(() => expect(cuisineSelect.value).toBe('ramen'))
+
+    // 薬局に切り替え → 料理selectが非表示に
+    fireEvent.change(catSelect, { target: { value: 'pharmacy' } })
+    await waitFor(() => {
+      expect(screen.queryByText('料理（任意）')).toBeNull()
+    }, { timeout: 3000 })
+
+    // 検索 → cuisineはクエリに含まれない（自動クリア+クエリ側ガード）
+    fireEvent.click(screen.getByText('検索する'))
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    expect(overpassCalls[0]).toContain('[amenity=pharmacy]')
+    expect(overpassCalls[0]).not.toContain('cuisine')
+  }, IT_TIMEOUT)
+
+  it('自治体モード: 飲食店+寿司 → 各unionブランチに[cuisine=sushi]が連結される', async () => {
+    renderApp()
+    fireEvent.click(screen.getByText('自治体で検索'))
+    await selectMunicipality('大阪府', '高槻市')
+
+    const catSelect = await waitFor(() => {
+      const s = getSelectByLabel('カテゴリ（任意）')
+      expect(s).toBeTruthy()
+      return s
+    }, { timeout: 3000 })
+
+    // 飲食店（すべて）を選択 → 料理selectが出現
+    fireEvent.change(catSelect, { target: { value: 'food_drink' } })
+    const cuisineSelect = await waitFor(() => {
+      const s = getSelectByLabel('料理（任意）')
+      expect(s).toBeTruthy()
+      return s
+    }, { timeout: 3000 })
+    fireEvent.change(cuisineSelect, { target: { value: 'sushi' } })
+    await waitFor(() => expect(cuisineSelect.value).toBe('sushi'))
+
+    // 検索 → 8値unionの各ブランチにcuisineがAND連結
+    fireEvent.click(screen.getByText('検索する'))
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    expect(overpassCalls[0]).toContain('[cuisine=sushi]')
+    expect(overpassCalls[0]).toContain('amenity~"^(cafe|restaurant|fast_food|bar|pub|izakaya|sushi|food_court)$"')
+  }, IT_TIMEOUT)
+
+  it('モード切替: 料理フィルタも引き継がれる（last-wins）', async () => {
+    renderApp()
+
+    // 地図モードで レストラン+ラーメン
+    const catSelect = getSelectByLabel('探したいカテゴリ')
+    fireEvent.change(catSelect, { target: { value: 'restaurant' } })
+    const cuisineSelect = await waitFor(() => {
+      const s = getSelectByLabel('料理（任意）')
+      expect(s).toBeTruthy()
+      return s
+    }, { timeout: 3000 })
+    fireEvent.change(cuisineSelect, { target: { value: 'ramen' } })
+    await waitFor(() => expect(cuisineSelect.value).toBe('ramen'))
+
+    // 自治体モードへ切替 → 高槻市選択
+    fireEvent.click(screen.getByText('自治体で検索'))
+    await selectMunicipality('大阪府', '高槻市')
+
+    // カテゴリ・料理ともに引き継がれている
+    const munCat = await waitFor(() => {
+      const s = getSelectByLabel('カテゴリ（任意）')
+      expect(s).toBeTruthy()
+      expect(s.value).toBe('restaurant')
+      return s
+    }, { timeout: 5000 })
+    const munCuisine = await waitFor(() => {
+      const s = getSelectByLabel('料理（任意）')
+      expect(s).toBeTruthy()
+      expect(s.value).toBe('ramen')
+      return s
+    }, { timeout: 5000 })
+
+    // 検索 → restaurant+ramen のクエリ
+    fireEvent.click(screen.getByText('検索する'))
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    expect(overpassCalls[0]).toContain('[amenity=restaurant][cuisine=ramen]')
+  }, IT_TIMEOUT)
+})

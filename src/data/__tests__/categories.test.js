@@ -2,17 +2,19 @@ import { describe, it, expect } from 'vitest'
 import {
   CATEGORIES,
   CATEGORY_GROUPS,
+  CUISINES,
   getCategoryById,
   getGroupedCategories,
-  categoryToQueryFilter
+  categoryToQueryFilter,
+  isFoodCategory
 } from '../../data/categories'
 
 describe('カテゴリの粒度整理（optgroup グループ化）', () => {
-  it('5つのドメイングループを返し、計18カテゴリを含む', () => {
+  it('5つのドメイングループを返し、計19カテゴリを含む', () => {
     const grouped = getGroupedCategories()
     expect(grouped.length).toBe(5)
     const total = grouped.reduce((n, g) => n + g.categories.length, 0)
-    expect(total).toBe(18)
+    expect(total).toBe(19)
   })
 
   it('グループ間・グループ内でIDが重複しておらず、すべてCATEGORIESに存在する', () => {
@@ -39,11 +41,43 @@ describe('カテゴリの粒度整理（optgroup グループ化）', () => {
     expect(ids).not.toContain('gas_station')
   })
 
-  it('ラーメンカテゴリ（AND条件）のクエリ生成は不変', () => {
-    const ramen = getCategoryById('ramen')
-    expect(ramen.logic).toBe('and')
-    const f = categoryToQueryFilter(ramen)
-    expect(f.andFilters.length).toBe(2)
-    expect(f.andFilters[0]).toBe('cuisine=ramen')
+  it('(#54) ラーメンカテゴリは削除済みで、cuisineは独立フィルタ（CUISINES）として扱う', () => {
+    // カテゴリからラーメンが削除されている
+    expect(getCategoryById('ramen')).toBeNull()
+    expect(CATEGORIES.map((c) => c.id)).not.toContain('ramen')
+
+    // cuisineフィルタは独立次元: ラーメン・うどんを含む
+    const values = CUISINES.map((c) => c.value)
+    expect(values).toContain('ramen')
+    expect(values).toContain('udon')
+    // 値が一意
+    expect(new Set(values).size).toBe(values.length)
+    // ラベルがすべて日本語
+    for (const c of CUISINES) {
+      expect(c.label).toMatch(/[\u3040-\u30ff\u4e00-\u9fff]/)
+    }
+  })
+
+  it('(#54) 飲食グループはamenity粒度の5種（food_drinkが合集合、残りは単一タイプ）', () => {
+    const foodGroup = CATEGORY_GROUPS.find((g) => g.name === '飲食')
+    expect(foodGroup.ids).toEqual(['food_drink', 'cafe', 'restaurant', 'fast_food', 'bar_izakaya'])
+
+    // 単一タイプカテゴリはamenity=1値のフィルタ
+    const cafe = categoryToQueryFilter(getCategoryById('cafe'))
+    expect(cafe.unionFilters).toEqual(['amenity=cafe'])
+    const ff = categoryToQueryFilter(getCategoryById('fast_food'))
+    expect(ff.unionFilters).toEqual(['amenity=fast_food'])
+    // バー・居酒屋は3値OR
+    const bar = categoryToQueryFilter(getCategoryById('bar_izakaya'))
+    expect(bar.unionFilters[0]).toBe('amenity~"^(bar|pub|izakaya)$"')
+  })
+
+  it('(#54) isFoodCategory: 飲食グループのみtrue、それ以外はfalse', () => {
+    for (const id of ['food_drink', 'cafe', 'restaurant', 'fast_food', 'bar_izakaya']) {
+      expect(isFoodCategory(id)).toBe(true)
+    }
+    for (const id of ['retail', 'pharmacy', 'school', 'transport', 'bank', '', null, 'ramen']) {
+      expect(isFoodCategory(id)).toBe(false)
+    }
   })
 })

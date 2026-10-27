@@ -6,7 +6,9 @@
  * 
  * タグ条件はJSON + percent-encodingで表現する。
  * 旧形式（;と:区切り）のURLは後方互換でデコードを試みる。
+ * (#54) 料理フィルタは cu パラメータ。旧 c=ramen URL は「レストラン + cuisine=ramen」にマッピング。
  */
+import { getCategoryById } from '../data/categories'
 
 const PARAM_KEYS = {
   mode: 'm',         // search mode: s(imple) / a(dvanced)
@@ -22,7 +24,20 @@ const PARAM_KEYS = {
   advKw: 'ak',       // advanced keyword
   tab: 'tab',        // right panel tab
   src: 'src',        // (#44) search source: m(unicipality) / m(ap)
-  mun: 'mun'         // (#44) municipality code
+  mun: 'mun',        // (#44) municipality code
+  cuisine: 'cu'      // (#54) cuisine value (cuisine filter, food categories only)
+}
+
+/**
+ * (#54) カテゴリIDとcuisine値の解決
+ * - 旧ラーメンカテゴリ(c=ramen)の共有URL → レストラン + cuisine=ramen に自動マッピング
+ *   （cuが明示指定されていればそれを優先）
+ * - 未知のカテゴリID → 未指定として無視
+ */
+function resolveCategoryAndCuisine(cat, cu) {
+  if (cat === 'ramen') return { category: 'restaurant', cuisine: cu || 'ramen' }
+  if (cat && !getCategoryById(cat)) return { category: '', cuisine: '' }
+  return { category: cat || '', cuisine: cu || '' }
 }
 
 /**
@@ -41,6 +56,7 @@ export function encodeStateToURL(state) {
       const ms = state.municipalitySearch || state.simpleSearch
       if (ms.category) params.set(PARAM_KEYS.cat, ms.category)
       if (ms.keyword) params.set(PARAM_KEYS.kw, ms.keyword)
+      if (ms.cuisine) params.set(PARAM_KEYS.cuisine, ms.cuisine)
     }
   } else {
     // Map mode (default)
@@ -53,6 +69,7 @@ export function encodeStateToURL(state) {
       if (state.simpleSearch.category) params.set(PARAM_KEYS.cat, state.simpleSearch.category)
       if (state.simpleSearch.keyword) params.set(PARAM_KEYS.kw, state.simpleSearch.keyword)
       if (state.simpleSearch.location) params.set(PARAM_KEYS.loc, state.simpleSearch.location)
+      if (state.simpleSearch.cuisine) params.set(PARAM_KEYS.cuisine, state.simpleSearch.cuisine)
     }
     // Advanced search
     if (state.searchMode === 'advanced') {
@@ -94,9 +111,12 @@ export function decodeURLToState(searchParams) {
     state.selectedMunicipality = { code: munCode, name: '', bbox: null }
     state.searchMode = 'simple'
     // (#47) 自治体モード用のカテゴリ・キーワード
+    // (#54) cuisine + 旧 c=ramen の自動マッピング
+    const resolved = resolveCategoryAndCuisine(params.get(PARAM_KEYS.cat), params.get(PARAM_KEYS.cuisine))
     state.municipalitySearch = {
-      category: params.get(PARAM_KEYS.cat) || '',
-      keyword: params.get(PARAM_KEYS.kw) || ''
+      category: resolved.category,
+      keyword: params.get(PARAM_KEYS.kw) || '',
+      cuisine: resolved.cuisine
     }
     hasData = true
   } else {
@@ -113,11 +133,12 @@ export function decodeURLToState(searchParams) {
     }
 
     // Simple search
-    const cat = params.get(PARAM_KEYS.cat)
+    // (#54) cuisine + 旧 c=ramen の自動マッピング
+    const resolved = resolveCategoryAndCuisine(params.get(PARAM_KEYS.cat), params.get(PARAM_KEYS.cuisine))
     const kw = params.get(PARAM_KEYS.kw)
     const loc = params.get(PARAM_KEYS.loc)
-    if (cat || kw || loc) {
-      state.simpleSearch = { category: cat || '', keyword: kw || '', location: loc || '' }
+    if (resolved.category || resolved.cuisine || kw || loc) {
+      state.simpleSearch = { category: resolved.category, keyword: kw || '', location: loc || '', cuisine: resolved.cuisine }
       hasData = true
     }
 

@@ -1,12 +1,12 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { getGroupedCategories, getCategoryById, categoryToReadableTags } from '../data/categories'
+import { getGroupedCategories, getCategoryById, categoryToReadableTags, CUISINES, isFoodCategory } from '../data/categories'
 import { geocode } from '../utils/geo'
 import { useMapRef } from '../hooks/useMapRef'
 
 function SimpleSearch() {
   const { state, dispatch } = useApp()
-  const { category, keyword, location } = state.simpleSearch
+  const { category, keyword, location, cuisine } = state.simpleSearch
   const [geocoding, setGeocoding] = useState(false)
   const [geocodeMsg, setGeocodeMsg] = useState(null)
   const mapRef = useMapRef()
@@ -46,6 +46,14 @@ function SimpleSearch() {
 
   // 選択中カテゴリのタグ情報
   const selectedCat = useMemo(() => (category ? getCategoryById(category) : null), [category])
+
+  // (#54) 飲食カテゴリ選択時のみcuisineフィルタを表示。非飲食カテゴリ・未選択時は自動クリア
+  const showCuisine = isFoodCategory(category)
+  useEffect(() => {
+    if (cuisine && !isFoodCategory(category)) {
+      dispatch({ type: 'SET_SIMPLE_SEARCH', payload: { cuisine: '' } })
+    }
+  }, [category, cuisine, dispatch])
 
   return (
     <div className="space-y-3">
@@ -87,6 +95,28 @@ function SimpleSearch() {
           </p>
         )}
       </div>
+
+      {/* Cuisine filter (#54): 飲食カテゴリ選択時のみ表示 */}
+      {showCuisine && (
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            料理（任意）
+          </label>
+          <select
+            value={cuisine}
+            onChange={(e) => update('cuisine', e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          >
+            <option value="">すべて（料理で絞らない）</option>
+            {CUISINES.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-400">
+            例: レストラン + ラーメン で、ラーメン店に絞り込みます
+          </p>
+        </div>
+      )}
 
       {/* Keyword search */}
       <div>

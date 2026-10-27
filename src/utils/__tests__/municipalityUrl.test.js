@@ -66,3 +66,66 @@ describe('#44 Municipality URL encoding/decoding', () => {
     expect(restored.municipalitySearch.category).toBe('restaurant')
   })
 })
+
+describe('#54 cuisineフィルタのURL encode/decoding', () => {
+  it('cuisineをcuパラメータでエンコードする（両モード）', () => {
+    // 自治体モード
+    const mState = {
+      searchMode: 'simple',
+      searchSource: 'municipality',
+      selectedMunicipality: { code: '26100', name: '高槻市', bbox: { south: 34.78, west: 135.49, north: 34.81, east: 135.52 } },
+      municipalitySearch: { category: 'restaurant', keyword: '', cuisine: 'ramen' },
+      simpleSearch: { category: '', keyword: '', location: '', cuisine: '' },
+      advancedSearch: { tags: [], keyword: '', useAnd: true },
+      bbox: { south: 34.78, west: 135.49, north: 34.81, east: 135.52 }
+    }
+    expect(encodeStateToURL(mState)).toContain('cu=ramen')
+
+    // 地図モード
+    const mapState = {
+      searchMode: 'simple',
+      searchSource: 'map',
+      selectedMunicipality: null,
+      municipalitySearch: { category: '', keyword: '', cuisine: '' },
+      simpleSearch: { category: 'food_drink', keyword: '', location: '', cuisine: 'sushi' },
+      advancedSearch: { tags: [], keyword: '', useAnd: true },
+      bbox: { south: 34.78, west: 135.49, north: 34.81, east: 135.52 }
+    }
+    const mapQs = encodeStateToURL(mapState)
+    expect(mapQs).toContain('c=food_drink')
+    expect(mapQs).toContain('cu=sushi')
+  })
+
+  it('cuisine付きURLをデコードして復元する（round-trip）', () => {
+    const qs = 'c=restaurant&cu=udon&b=34.780000,135.490000,34.810000,135.520000'
+    const state = decodeURLToState('?' + qs)
+    expect(state.simpleSearch.category).toBe('restaurant')
+    expect(state.simpleSearch.cuisine).toBe('udon')
+  })
+
+  it('旧共有URL c=ramen を「レストラン + cuisine=ramen」に自動マッピングする（地図モード）', () => {
+    const state = decodeURLToState('?c=ramen')
+    expect(state.simpleSearch.category).toBe('restaurant')
+    expect(state.simpleSearch.cuisine).toBe('ramen')
+  })
+
+  it('旧共有URL c=ramen をマッピングする（自治体モード）', () => {
+    const state = decodeURLToState('?src=m&mun=26100&c=ramen')
+    expect(state.searchSource).toBe('municipality')
+    expect(state.municipalitySearch.category).toBe('restaurant')
+    expect(state.municipalitySearch.cuisine).toBe('ramen')
+  })
+
+  it('c=ramen + 明示cu指定の場合はcuを優先する', () => {
+    const state = decodeURLToState('?c=ramen&cu=udon')
+    expect(state.simpleSearch.category).toBe('restaurant')
+    expect(state.simpleSearch.cuisine).toBe('udon')
+  })
+
+  it('未知のカテゴリIDは無視する（未指定として扱う）', () => {
+    const state = decodeURLToState('?c=not_a_real_category&k=x')
+    expect(state.simpleSearch.category).toBe('')
+    // 旧cuisine値も一緒に無視される
+    expect(state.simpleSearch.cuisine).toBe('')
+  })
+})

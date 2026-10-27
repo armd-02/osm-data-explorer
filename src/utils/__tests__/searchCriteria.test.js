@@ -238,3 +238,50 @@ describe('buildSearchCriteria — モード切り替え時の値漏れ (#47)', (
     expect(criteria.bbox).toEqual(override)
   })
 })
+
+describe('buildSearchCriteria — cuisineフィルタ (#54)', () => {
+  it('地図モード: レストラン+ラーメン → [amenity=restaurant][cuisine=ramen] がクエリに入る', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'restaurant', keyword: '', location: '', cuisine: 'ramen' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.cuisine).toBe('ramen')
+    expect(criteria.query).toContain('[amenity=restaurant][cuisine=ramen]')
+  })
+
+  it('自治体モード: 飲食店+寿司 → 各unionブランチに[cuisine=sushi]が連結される', () => {
+    const mun = { code: '26100', name: '高槻市', bbox: SMALL_BBOX }
+    const criteria = buildSearchCriteria(baseState({
+      searchSource: 'municipality',
+      selectedMunicipality: mun,
+      municipalitySearch: { category: 'food_drink', keyword: '', cuisine: 'sushi' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.cuisine).toBe('sushi')
+    expect(criteria.query).toContain('[cuisine=sushi]')
+  })
+
+  it('非飲食カテゴリ+ cuisine: クエリに反映されない（飲食カテゴリのみ有効）', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'pharmacy', keyword: '', location: '', cuisine: 'ramen' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.query).not.toContain('cuisine')
+    expect(criteria.query).toContain('[amenity=pharmacy]')
+  })
+
+  it('cuisine未指定時は従来クエリと同一（後方互換）', () => {
+    const a = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'restaurant', keyword: '', location: '' }
+    }))
+    const b = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'restaurant', keyword: '', location: '', cuisine: '' }
+    }))
+    expect(a.query).toBe(b.query)
+    expect(a.query).not.toContain('cuisine')
+  })
+})
