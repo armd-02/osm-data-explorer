@@ -24,28 +24,35 @@ export default function MunicipalitySearch() {
     const base = import.meta.env.BASE_URL || '/'
     fetch(base + 'data/municipalities.json')
       .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => {
-        setData(d)
-        // URL復元: selectedMunicipalityがあればpref/munをセット
-        if (state.selectedMunicipality && state.selectedMunicipality.code) {
-          const mun = d.municipalities.find(m => m.code === state.selectedMunicipality.code)
-          if (mun) {
-            setPrefCode(mun.prefCode)
-            setMunCode(mun.code)
-            // (#46) 表示名を復元
-            if (!state.selectedMunicipality.name || !state.selectedMunicipality.bbox) {
-              dispatch({ type: 'SET_MUNICIPALITY', payload: {
-                code: mun.code,
-                name: mun.displayName || mun.name,
-                bbox: mun.bbox
-              }})
-            }
-          }
-        }
-      })
+      .then(d => setData(d))
       .catch(() => setData(null))
       .finally(() => setLoading(false))
   }, [])
+
+  /**
+   * 親stateのselectedMunicipalityとselectを同期（URL復元対応）
+   *
+   * 旧実装は初回fetchの.then内で state をクローズしていたが、Reactは
+   * 子effect→親effect の順で実行するため、App側のURL復元dispatchが
+   * fetch解決前に反映されるかどうかで結果が変わる（stale closure競合）。
+   * 代わりに data / selectedMunicipality 変化に反応するeffectにすると
+   * タイミングに依存せず確定的に同期される。
+   */
+  useEffect(() => {
+    if (!data || !state.selectedMunicipality || !state.selectedMunicipality.code) return
+    const mun = data.municipalities.find(m => m.code === state.selectedMunicipality.code)
+    if (!mun || mun.code === munCode) return
+    setPrefCode(mun.prefCode)
+    setMunCode(mun.code)
+    // (#46) 表示名・BBOXが未設定ならデータから補完
+    if (!state.selectedMunicipality.name || !state.selectedMunicipality.bbox) {
+      dispatch({ type: 'SET_MUNICIPALITY', payload: {
+        code: mun.code,
+        name: mun.displayName || mun.name,
+        bbox: mun.bbox
+      }})
+    }
+  }, [data, state.selectedMunicipality, munCode, dispatch])
 
   // 都道府県リストを生成（prefCode + nameの重複排除）
   const PREFECTURES = useMemo(() => {

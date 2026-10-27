@@ -53,8 +53,37 @@ function App() {
           return { ...state, results: [], error: null, errorType: null, errorSuggestion: null, status: 'idle', fetchMeta: null }
         case 'SET_ACTIVE_RESULT':
           return { ...state, activeResultId: action.payload }
-        case 'SET_SEARCH_SOURCE':
-          return { ...state, searchSource: action.payload }
+        case 'SET_SEARCH_SOURCE': {
+          // (#47 追跡) モード切替時のカテゴリ・キーワード引き継ぎ
+          // 切り先が空の場合のみ切り元の値を引き継ぐ（双方が設定済みの場合は各自保持）
+          // 「カテゴリを変えても反映されない」印象を防ぐ
+          const src = action.payload
+          const ms = state.municipalitySearch || { category: '', keyword: '' }
+          const ss = state.simpleSearch || { category: '', keyword: '', location: '' }
+          if (src === 'municipality') {
+            return {
+              ...state,
+              searchSource: src,
+              municipalitySearch: {
+                ...ms,
+                category: ms.category || ss.category,
+                keyword: ms.keyword || ss.keyword
+              }
+            }
+          }
+          if (src === 'map') {
+            return {
+              ...state,
+              searchSource: src,
+              simpleSearch: {
+                ...ss,
+                category: ss.category || ms.category,
+                keyword: ss.keyword || ms.keyword
+              }
+            }
+          }
+          return { ...state, searchSource: src }
+        }
         case 'SET_MUNICIPALITY':
           return { ...state, selectedMunicipality: action.payload }
         case 'SET_MUNICIPALITY_SEARCH':
