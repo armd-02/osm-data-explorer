@@ -54,9 +54,10 @@ function App() {
         case 'SET_ACTIVE_RESULT':
           return { ...state, activeResultId: action.payload }
         case 'SET_SEARCH_SOURCE': {
-          // (#47 追跡) モード切替時のカテゴリ・キーワード引き継ぎ
-          // 切り先が空の場合のみ切り元の値を引き継ぐ（双方が設定済みの場合は各自保持）
-          // 「カテゴリを変えても反映されない」印象を防ぐ
+          // (#49 改訂) モード切替時のカテゴリ・キーワード引き継ぎ（last-wins）
+          // 切り元の値を切り先に**常に**引き継ぐ。両モードのカテゴリは共有の
+          // 単一値として振る舞い、「カテゴリを変えたのにモード切替で古い値に
+          // 戻る（カテゴリが変わってない）」問題を解消する。
           const src = action.payload
           const ms = state.municipalitySearch || { category: '', keyword: '' }
           const ss = state.simpleSearch || { category: '', keyword: '', location: '' }
@@ -66,8 +67,8 @@ function App() {
               searchSource: src,
               municipalitySearch: {
                 ...ms,
-                category: ms.category || ss.category,
-                keyword: ms.keyword || ss.keyword
+                category: ss.category,
+                keyword: ss.keyword
               }
             }
           }
@@ -77,8 +78,8 @@ function App() {
               searchSource: src,
               simpleSearch: {
                 ...ss,
-                category: ss.category || ms.category,
-                keyword: ss.keyword || ms.keyword
+                category: ms.category,
+                keyword: ms.keyword
               }
             }
           }
@@ -117,11 +118,14 @@ function App() {
     restoredRef.current = true
     const urlState = decodeURLToState(window.location.search)
     if (urlState) {
+      // (#49) SET_SEARCH_SOURCE を先頭でdispatch: last-wins引き継ぎにより
+      // モード切替時にカテゴリが上書きされるため、モード固有stateの復元より先に
+      // 実行しないと、URLのカテゴリが初期値で消去される。
+      if (urlState.searchSource) dispatch({ type: 'SET_SEARCH_SOURCE', payload: urlState.searchSource })
       if (urlState.searchMode) dispatch({ type: 'SET_SEARCH_MODE', payload: urlState.searchMode })
       if (urlState.simpleSearch) dispatch({ type: 'SET_SIMPLE_SEARCH', payload: urlState.simpleSearch })
       if (urlState.advancedSearch) dispatch({ type: 'SET_ADVANCED_SEARCH', payload: urlState.advancedSearch })
       if (urlState.bbox) dispatch({ type: 'SET_BBOX', payload: urlState.bbox })
-      if (urlState.searchSource) dispatch({ type: 'SET_SEARCH_SOURCE', payload: urlState.searchSource })
       if (urlState.selectedMunicipality) dispatch({ type: 'SET_MUNICIPALITY', payload: urlState.selectedMunicipality })
       if (urlState.municipalitySearch) dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: urlState.municipalitySearch })
     }

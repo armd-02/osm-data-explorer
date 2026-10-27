@@ -1,0 +1,4 @@
+# GitHub Pages カスタムヘッダ
+# SPAの入口HTMLは常に最新をフェッチさせる（旧バンドル固定を防ぐ #47追跡）
+/index.html
+  Cache-Control: no-cache, must-revalidate

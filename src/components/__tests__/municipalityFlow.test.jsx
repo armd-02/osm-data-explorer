@@ -291,7 +291,7 @@ describe('自治体モード E2E（カテゴリ反映の検証）', () => {
     expect(overpassCalls[0]).toContain('amenity=cafe')
   }, IT_TIMEOUT)
 
-  it('モード切替: 地図モードのカテゴリが自治体モードに引き継がれる', async () => {
+  it('モード切替: 地図モードのカテゴリが自治体モードに引き継がれる（last-wins）', async () => {
     renderApp()
 
     // 地図モード（初期）でカテゴリ「カフェ」を選択
@@ -313,5 +313,60 @@ describe('自治体モード E2E（カテゴリ反映の検証）', () => {
       return s
     }, { timeout: 5000 })
     expect(catSelect.value).toBe('cafe')
+  }, IT_TIMEOUT)
+
+  it('カテゴリ変更はlast-wins: 切替後に变更した値が元モードに戻っても優先される（#49改訂）', async () => {
+    renderApp()
+
+    // 1. 自治体モードで高槻市選択 + カテゴリ=レストラン
+    fireEvent.click(screen.getByText('自治体で検索'))
+    await selectMunicipality('大阪府', '高槻市')
+    const munCat = await waitFor(() => {
+      const s = getSelectByLabel('カテゴリ（任意）')
+      expect(s).toBeTruthy()
+      return s
+    }, { timeout: 5000 })
+    fireEvent.change(munCat, { target: { value: 'restaurant' } })
+    await waitFor(() => expect(munCat.value).toBe('restaurant'))
+
+    // 2. 地図モードへ切替: 地図側のカテゴリもレストランになる
+    //    （この際、#47設計により選択済み自治体はクリアされる）
+    fireEvent.click(screen.getByText('地図範囲で検索'))
+    const mapCat = getSelectByLabel('探したいカテゴリ')
+    await waitFor(() => expect(mapCat.value).toBe('restaurant'), { timeout: 3000 })
+
+    // 3. 地図モードでカフェに変更
+    fireEvent.change(mapCat, { target: { value: 'cafe' } })
+    await waitFor(() => expect(mapCat.value).toBe('cafe'))
+
+    // 4. 自治体モードへ戻り高槻市を再選択: カテゴリselectは最新値（カフェ）
+    //    （旧実装「切り先が空の場合のみ」ではここでレストランに逆戻りする）
+    fireEvent.click(screen.getByText('自治体で検索'))
+    await selectMunicipality('大阪府', '高槻市')
+    const munCat2 = await waitFor(() => {
+      const s = getSelectByLabel('カテゴリ（任意）')
+      expect(s).toBeTruthy()
+      return s
+    }, { timeout: 5000 })
+    expect(munCat2.value).toBe('cafe')
+  }, IT_TIMEOUT)
+
+  it('地図モードURL（src=map&c=cafe）からカテゴリが復元され検索に使える（dispatch順序）', async () => {
+    renderApp('?src=map&c=cafe&b=35.0,139.0,35.1,139.1')
+
+    // 地図モードのカテゴリselectにcafeが復元される
+    // （SET_SEARCH_SOURCE が SET_SIMPLE_SEARCH より後にdispatchされると、
+    //   last-wins引き継ぎがURLのカテゴリを空で上書きする → 順序が重要）
+    const catSelect = await waitFor(() => {
+      const s = getSelectByLabel('探したいカテゴリ')
+      expect(s).toBeTruthy()
+      expect(s.value).toBe('cafe')
+      return s
+    }, { timeout: 5000 })
+
+    // 検索してクエリがcafeになる
+    fireEvent.click(screen.getByText('検索する'))
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    expect(overpassCalls[0]).toContain('amenity=cafe')
   }, IT_TIMEOUT)
 })
