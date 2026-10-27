@@ -103,6 +103,73 @@ describe('executeOverpassQuery', () => {
   })
 })
 
+describe('エンドポイント自動フォールバック（#52: 一次ミラー停止時の対処）', () => {
+  beforeEach(() => {
+    clearCache()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('500: 一次エンドポイント失敗時に自動で次のエンドポイントにフォールバックする', async () => {
+    const payload = overpassPayload([
+      { type: 'node', id: 1, lat: 35.68, lon: 139.77, tags: { amenity: 'bank', name: 'フォールバック銀行' } }
+    ])
+    const fetchMock = vi.fn(async (url) => {
+      // custom (armd-01.sakura.ne.jp) が500、その次が正常応答
+      if (String(url).includes('sakura')) {
+        return mockResponse({ status: 500, ok: false, body: { error: 'Internal server error' } })
+      }
+      return mockResponse({ body: payload })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { results, meta } = await executeOverpassQuery(QUERY, { endpoint: 'custom' })
+
+    expect(results).toHaveLength(1)
+    expect(meta.endpoint).toBe(getEndpointLabel('public'))  // public にフォールバックした
+    expect(meta.fallback).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('429: レート制限時もフォールバックし、全エンドポイント429ならrate_limitエラー', async () => {
+    const fetchMock = vi.fn(async () => mockResponse({
+      status: 429, ok: false, body: null, headers: { 'Retry-After': '7' }
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      executeOverpassQuery(QUERY, { endpoint: 'custom' })
+    ).rejects.toMatchObject({ type: 'rate_limit' })
+    // custom → public → kumi の3回すべて試行される
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('クエリエラー(invalid_query)時はフォールバックしない', async () => {
+    const fetchMock = vi.fn(async () => mockResponse({
+      body: { version: 0.6, remark: 'syntax error line 1' }
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      executeOverpassQuery(QUERY, { endpoint: 'custom' })
+    ).rejects.toMatchObject({ type: 'invalid_query' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('キャンセル済みシグナルの場合は要求せずキャンセルとして終了する', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      executeOverpassQuery(QUERY, { endpoint: 'custom', signal: controller.signal })
+    ).rejects.toMatchObject({ type: 'network' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('キャッシュキーのエンドポイント区別（Issue #17 完了条件）', () => {
   beforeEach(() => {
     clearCache()
