@@ -2,7 +2,7 @@
  * Overpass API クエリ生成・実行・キャッシュ
  * UIからクエリ生成を分離したデータ取得層
  */
-import { getOverpassUrl, getEndpointLabel, APP_CONFIG } from '../config'
+import { getOverpassUrl, getEndpointLabel, APP_CONFIG, FALLBACK_ENDPOINT_ORDER } from '../config'
 import { getCategoryById, categoryToQueryFilter } from '../data/categories'
 
 // ============================================================
@@ -201,7 +201,74 @@ function quoteValue(str) {
 // ============================================================
 
 /**
+ * 1回だけのクエリ実行（fetch＋応答分類）
+ * 成功時はOverpassの生JSONを返す。失敗時は retryable フラグ付き OverpassError を送出。
+ *  - 429 / 5xx / その他4xx / ネットワークエラー / タイムアウト → retryable=true（別インスタンスで試す価値がある）
+ *  - クエリエラー(invalid_query) / 手動キャンセル → retryable=false（どのインスタンスでも同じ結果）
+ */
+async function attemptQuery(url, query, controller) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `data=${encodeURIComponent(query)}`,
+    signal: controller.signal
+  })
+
+  // 429: レート制限（インスタンスごとに独立した制限 → 別インスタンスへフォールバック可）
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10)
+    const err = new OverpassError(
+      `Overpass APIのレート制限に達しました（${retryAfter}秒待ってから再試行）`,
+      'rate_limit',
+      `${retryAfter}秒待ってから再実行してください。`
+    )
+    err.retryable = true
+    throw err
+  }
+
+  // 5xx: サーバーエラー → 次インスタンスへ
+  if (response.status >= 500) {
+    const err = new OverpassError(
+      `Overpass APIに問題があります（${response.status}）`,
+      'server_error',
+      '数分待ってから再試行してください。'
+    )
+    err.retryable = true
+    throw err
+  }
+
+  // その他の4xx（406 ブロック、403 など）→ 次インスタンスへ
+  if (!response.ok) {
+    const err = new OverpassError(
+      `Overpass APIエラー（${response.status}）`,
+      'server_error',
+      'クエリ内容を確認して再試行してください。'
+    )
+    err.retryable = true
+    throw err
+  }
+
+  const data = await response.json()
+
+  // Overpassのクエリエラー: どのインスタンスでも同じ結果になるためフォールバックしない
+  if (data.remark && /error/i.test(data.remark)) {
+    const err = new OverpassError(
+      `クエリエラー: ${data.remark}`,
+      'invalid_query',
+      '検索条件を確認して再試行してください。'
+    )
+    err.retryable = false
+    throw err
+  }
+
+  return data
+}
+
+/**
  * Overpass API にクエリを実行
+ * 失敗時は自動で次のインスタンスにフォールバックする（#52）。
+ * 試行チェーン: 指定endpoint → FALLBACK_ENDPOINT_ORDER 順（重複除去）。
+ * クエリエラー(invalid_query)と手動キャンセルはフォールバックしない。
  * @param {string} query - Overpass QLクエリ
  * @param {object} options - { endpoint, timeout, signal }
  * @returns {Promise<{results: Array, meta: object}>}
@@ -213,122 +280,110 @@ export async function executeOverpassQuery(query, options = {}) {
     signal: externalSignal
   } = options
 
-  const url = getOverpassUrl(endpoint)
-  const cKey = cacheKey(query, endpoint)
+  // 試行チェーン: 一次エンドポイント + フォールバック順（重複除去）
+  const chain = [endpoint, ...FALLBACK_ENDPOINT_ORDER.filter((ep) => ep !== endpoint)]
 
-  // キャッシュチェック（キーは query＋エンドポイントID）
-  const cached = getFromCache(cKey)
-  if (cached) {
-    return {
-      results: cached.data,
-      meta: { ...cached.meta, cached: true }
-    }
-  }
+  const startedAt = Date.now()
+  let lastError = null
 
-  // キャンセルサポート
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeout)
+  for (let i = 0; i < chain.length; i++) {
+    const ep = chain[i]
 
-  // 外部シグナル連携
-  if (externalSignal) {
-    externalSignal.addEventListener('abort', () => controller.abort())
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(query)}`,
-      signal: controller.signal
-    })
-
-    // 429: レート制限 → 再試行
-    if (response.status === 429) {
-      const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10)
-      throw new OverpassError(
-        `Overpass APIのレート制限に達しました（${retryAfter}秒待ってから再試行）`,
-        'rate_limit',
-        `${retryAfter}秒待ってから再実行してください。`
-      )
+    // すでにキャンセル済みの場合は即終了
+    if (externalSignal && externalSignal.aborted) {
+      throw new OverpassError('検索がキャンセルされました', 'network', null)
     }
 
-    // 5xx: サーバーエラー → 再試行提案
-    if (response.status >= 500) {
-      throw new OverpassError(
-        `Overpass APIに問題があります（${response.status}）`,
-        'server_error',
-        '数分待ってから再試行してください。または別インスタンスに切り替えてください。'
-      )
+    const url = getOverpassUrl(ep)
+    const cKey = cacheKey(query, ep)
+
+    // キャッシュチェック（キーは query＋エンドポイントID）
+    const cached = getFromCache(cKey)
+    if (cached) {
+      return {
+        results: cached.data,
+        meta: { ...cached.meta, cached: true, endpoint: getEndpointLabel(ep) }
+      }
     }
 
-    if (!response.ok) {
-      throw new OverpassError(
-        `Overpass APIエラー（${response.status}）`,
-        'server_error',
-        'クエリ内容を確認して再試行してください。'
-      )
+    // キャンセルサポート＋タイムアウト（全体予算を共有: 前回の所要時間を差し引いて縮小）
+    const elapsed = Date.now() - startedAt
+    const attemptTimeout = Math.max(1, timeout - elapsed)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), attemptTimeout)
+
+    // 外部シグナル連携
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', () => controller.abort())
     }
 
-    const data = await response.json()
+    try {
+      const data = await attemptQuery(url, query, controller)
 
-    // Overpassの内部エラーチェック
-    if (data.remark && /error/i.test(data.remark)) {
-      throw new OverpassError(
-        `クエリエラー: ${data.remark}`,
-        'invalid_query',
-        '検索条件を確認して再試行してください。'
-      )
-    }
+      const results = parseOverpassResponse(data)
+      const meta = {
+        fetchedAt: new Date().toISOString(),
+        endpoint: getEndpointLabel(ep),
+        elementCount: data.elements ? data.elements.length : 0,
+        cached: false,
+        fallback: i > 0
+      }
 
-    const results = parseOverpassResponse(data)
-    const meta = {
-      fetchedAt: new Date().toISOString(),
-      endpoint: getEndpointLabel(endpoint),
-      elementCount: data.elements ? data.elements.length : 0,
-      cached: false
-    }
+      // キャッシュに格納
+      setToCache(cKey, results, meta)
 
-    // キャッシュに格納
-    setToCache(cKey, results, meta)
+      // 結果が空の場合
+      if (results.length === 0) {
+        return { results: [], meta: { ...meta, empty: true } }
+      }
 
-    // 結果が空の場合
-    if (results.length === 0) {
-      return { results: [], meta: { ...meta, empty: true } }
-    }
+      return { results, meta }
+    } catch (error) {
+      // 手動キャンセル（外部シグナル）→ キャンセルとして終了（フォールバックしない）
+      if (error.name === 'AbortError' && externalSignal && externalSignal.aborted) {
+        throw new OverpassError('検索がキャンセルされました', 'network', null)
+      }
 
-    return { results, meta }
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      // タイムアウト or 手動キャンセル
-      const isTimeout = !externalSignal || !externalSignal.aborted
-      if (isTimeout) {
-        throw new OverpassError(
-          'タイムアウトしました（30秒）',
+      // タイムアウト（内部abort）→ 別インスタンスで再試行
+      if (error.name === 'AbortError') {
+        const err = new OverpassError(
+          `タイムアウトしました（${attemptTimeout}ミリ秒）`,
           'timeout',
           '検索範囲を狭めて再試行してください。'
         )
+        err.retryable = true
+        lastError = err
+        continue
       }
-      throw new OverpassError(
-        '検索がキャンセルされました',
+
+      if (error instanceof OverpassError) {
+        if (!error.retryable) throw error // invalid_query など
+        lastError = error
+        continue
+      }
+
+      // ネットワークエラー → 別インスタンスで再試行
+      const err = new OverpassError(
+        `接続に失敗しました: ${error.message}`,
         'network',
-        null
+        'ネットワーク接続を確認して再試行してください。'
       )
-    }
-    if (error instanceof OverpassError) {
-      throw error
-    }
-    // ネットワークエラー
-    throw new OverpassError(
-      `接続に失敗しました: ${error.message}`,
-      'network',
-      'ネットワーク接続を確認して再試行してください。'
-    )
-  } finally {
-    clearTimeout(timeoutId)
-    if (externalSignal) {
-      externalSignal.removeEventListener('abort', () => controller.abort())
+      err.retryable = true
+      lastError = err
+    } finally {
+      clearTimeout(timeoutId)
+      if (externalSignal) {
+        externalSignal.removeEventListener('abort', () => controller.abort())
+      }
     }
   }
+
+  // 全インスタンスが失敗
+  throw new OverpassError(
+    `Overpass API の全インスタンスで失敗しました。最後のエラー: ${lastError ? lastError.message : '不明'}`,
+    lastError ? lastError.type : 'network',
+    '数分待ってから再試行してください。続く場合はネットワーク接続を確認してください。'
+  )
 }
 
 /**

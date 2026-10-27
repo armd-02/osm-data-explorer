@@ -24,7 +24,12 @@ export const OVERPASS_ENDPOINTS = {
   }
 }
 
-export const DEFAULT_ENDPOINT = 'custom'
+// デフォルトは公式インスタンス（#52: armd-01インスタンスが500エラーを返すようになったため。
+// 旧デフォルトのcustomはフォールバックチェーンの末尾に移動）
+export const DEFAULT_ENDPOINT = 'public'
+
+// 一次エンドポイントが失敗した場合のフォールバック順（#52）
+export const FALLBACK_ENDPOINT_ORDER = ['public', 'kumi', 'custom']
 
 export const APP_CONFIG = {
   // デフォルトのOverpassエンドポイント
