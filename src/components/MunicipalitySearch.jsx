@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { CATEGORIES } from '../data/categories'
+import { getGroupedCategories } from '../data/categories'
 
 /**
  * (#44) 自治体別施設検索
@@ -171,8 +171,12 @@ export default function MunicipalitySearch() {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="">すべて（POI）</option>
-              {CATEGORIES.map(c => (
-                <option key={c.id} value={c.id}>{c.label}</option>
+              {getGroupedCategories().map(g => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

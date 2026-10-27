@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { CATEGORIES, getCategoryById, categoryToReadableTags } from '../data/categories'
+import { getGroupedCategories, getCategoryById, categoryToReadableTags } from '../data/categories'
 import { geocode } from '../utils/geo'
 import { useMapRef } from '../hooks/useMapRef'
 
@@ -60,8 +60,12 @@ function SimpleSearch() {
           className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
         >
           <option value="">選択してください（任意）</option>
-          {CATEGORIES.map((cat) => (
-            <option key={cat.id} value={cat.id}>{cat.label}</option>
+          {getGroupedCategories().map((g) => (
+            <optgroup key={g.group} label={g.group}>
+              {g.categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.label}</option>
+              ))}
+            </optgroup>
           ))}
         </select>
         {selectedCat && (
