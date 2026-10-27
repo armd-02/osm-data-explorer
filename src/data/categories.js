@@ -13,8 +13,8 @@
  * - description: 対象の説明（任意）
  * 
  * 新規カテゴリを追加する場合:
- * CATEGORIES 配列に新しいエントリを追加するだけでよい。
- * UIロジックの改修は不要。
+ * (1) CATEGORIES 配列に新しいエントリを追加
+ * (2) CATEGORY_GROUPS の適切なグループの ids にIDを追加（セレクト表示用）
  */
 
 export const CATEGORIES = [
@@ -175,28 +175,43 @@ export const CATEGORIES = [
     ],
     logic: 'and',
     description: 'ラーメン店（cuisine=ramen）'
-  },
-  {
-    id: 'supermarket',
-    label: 'スーパーマーケット',
-    tags: [{ key: 'shop', values: ['supermarket'] }],
-    logic: 'or',
-    description: 'スーパーマーケット'
-  },
-  {
-    id: 'gas_station',
-    label: 'ガソリンスタンド',
-    tags: [{ key: 'amenity', values: ['fuel'] }],
-    logic: 'or',
-    description: 'ガソリンスタンド・EV充電站'
   }
 ]
+// 注: 旧スーパーマーケット(shop=supermarket)・ガソリンスタンド(amenity=fuel)エントリは、
+// それぞれコンビニ・スーパー・交通・駅に完全に包含される重複だったため削除。
+// 検索能力は上位カテゴリがカバーする。
 
 /**
  * カテゴリIDからカテゴリオブジェクトを取得
  */
 export function getCategoryById(id) {
   return CATEGORIES.find((c) => c.id === id) || null
+}
+
+/**
+ * カテゴリの粒度が混在（広義グループ／単一タイプ／上位カテゴリのサブセット）するため、
+ * セレクトボックスはドメイン別の <optgroup> で表示し、グループ内は「広い → 狭い」順に並べる。
+ * グループ内の順序はここで制御する（CATEGORIES 配列の順序に依存しない）。
+ */
+export const CATEGORY_GROUPS = [
+  { name: '飲食', ids: ['food_drink', 'cafe', 'restaurant', 'ramen'] },
+  { name: '買い物・薬局', ids: ['retail', 'convenience', 'pharmacy', 'hospital'] },
+  { name: '教育・公共施設', ids: ['public_facility', 'school', 'park', 'worship', 'toilets'] },
+  { name: '交通・宿泊', ids: ['transport', 'accommodation'] },
+  { name: 'レジャー・文化・金融', ids: ['sports', 'museum', 'bank'] }
+]
+
+/**
+ * ドメイン別にグループ化したカテゴリを返す（セレクトの <optgroup> 描画用）。
+ * @returns {Array<{ group: string, categories: Array<object> }>}
+ */
+export function getGroupedCategories() {
+  return CATEGORY_GROUPS
+    .map((g) => ({
+      group: g.name,
+      categories: g.ids.map((id) => getCategoryById(id)).filter(Boolean)
+    }))
+    .filter((g) => g.categories.length > 0)
 }
 
 /**
