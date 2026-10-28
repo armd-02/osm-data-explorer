@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import { getGroupedCategories } from '../../data/categories'
-import { categoryMatchesElement } from '../../utils/categoryMatch'
+import { applyResultFilters, hasActiveFilters } from '../../utils/resultFilters'
 import EditPanel from '../EditPanel'
 import ExportBar from '../ExportBar'
-import MobileFacilityCard, { facilityName } from './MobileFacilityCard'
+import MobileFacilityCard from './MobileFacilityCard'
 
 /**
  * (#59) モバイル「一覧」タブ
@@ -27,31 +27,17 @@ export default function MobileListTab({ onOpenDetail }) {
 
   const setFilters = (patch) => dispatch({ type: 'SET_RESULT_FILTERS', payload: patch })
 
-  const filtered = useMemo(() => {
-    let list = results || []
-    if (nameFilter) {
-      const q = nameFilter.trim().toLowerCase()
-      list = list.filter(
-        (r) =>
-          ((r.name || '').toLowerCase().includes(q)) ||
-          (((r.tags && r.tags['name:ja']) || '').toLowerCase().includes(q))
-      )
-    }
-    if (catFilter) list = list.filter((r) => categoryMatchesElement(catFilter, r))
-    if (websiteOnly) {
-      list = list.filter((r) => r.tags && (r.tags.website || r.tags.official_website))
-    }
-    if (sortDir === 'name_asc' || sortDir === 'name_desc') {
-      list = [...list].sort((a, b) => facilityName(a).localeCompare(facilityName(b), 'ja'))
-      if (sortDir === 'name_desc') list.reverse()
-    }
-    return list
-  }, [results, nameFilter, catFilter, websiteOnly, sortDir])
+  // (#44) PCのResultsPanelと共通のフィルタロジック（resultFilters.js）を使う
+  const filtered = useMemo(
+    () => applyResultFilters(results, resultFilters),
+    [results, resultFilters]
+  )
+  const filtersActive = hasActiveFilters(resultFilters)
 
   const hasResults = status === 'success' && (results || []).length > 0
   const visible = filtered.slice(0, MAX_CARDS)
   const resetFilters = () =>
-    setFilters({ nameFilter: '', catFilter: '', websiteOnly: false, sortDir: 'none' })
+    setFilters({ nameFilter: '', typeFilter: 'all', catFilter: '', websiteOnly: false, sortDir: 'none' })
 
   return (
     <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
@@ -67,7 +53,7 @@ export default function MobileListTab({ onOpenDetail }) {
         <>
           <p className="text-xs text-slate-600">
             {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
-            {filtered.length !== results.length ? '（フィルタ適用中）' : ''}
+            {filtersActive ? '（フィルタ適用中）' : ''}
           </p>
 
           {/* フィルタバー */}
@@ -105,8 +91,8 @@ export default function MobileListTab({ onOpenDetail }) {
                 className="w-36 shrink-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="none">並び順</option>
-                <option value="name_asc">名前あ行順</option>
-                <option value="name_desc">名前逆順</option>
+                <option value="asc">名前あ行順</option>
+                <option value="desc">名前逆順</option>
               </select>
             </div>
             <label className="flex items-center gap-2 text-sm text-slate-700 min-h-[24px]">

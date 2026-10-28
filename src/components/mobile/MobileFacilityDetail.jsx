@@ -1,5 +1,5 @@
 import React from 'react'
-import { facilityName, formatAddress, safeWebsite } from './MobileFacilityCard'
+import { facilityName, formatAddress, safeWebsite } from '../../utils/facilityLabels'
 
 /**
  * (#59) 施設詳細ボトムシート

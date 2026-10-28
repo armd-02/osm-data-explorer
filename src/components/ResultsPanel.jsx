@@ -1,244 +1,170 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { useApp } from '../context/AppContext'
+import { getGroupedCategories } from '../data/categories'
+import { applyResultFilters, hasActiveFilters } from '../utils/resultFilters'
+import { facilityName, facilityTypeLabel, formatAddress, safeWebsite } from '../utils/facilityLabels'
 
 /**
- * 検索結果テーブル (#37)
- * 施設名・OSM型・ID・タグを列で比較可能
- * 絞り込み・ソート・行選択→地図移動
+ * 検索結果一覧（PC）
+ * (#44) 表示フィルタは state.resultFilters（App reducer）に置き、
+ * モバイル一覧タブ・ExportBar と同じロジック（resultFilters.js）を共有する。
+ * 施設タイプは日本語ラベル（facilityTypeLabel）で表示し、
+ * 住所・電話・公式サイトを追加列として出す。
  */
+const DEFAULT_FILTERS = { nameFilter: '', typeFilter: 'all', catFilter: '', websiteOnly: false, sortDir: 'none' }
+
 function ResultsPanel() {
   const { state, dispatch } = useApp()
-  const { results, status, activeResultId, fetchMeta } = state
+  const { results, resultFilters, fetchMeta, searchSource, selectedMunicipality } = state
 
-  const [nameFilter, setNameFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [catFilter, setCatFilter] = useState('all') // (#44) POIカテゴリ絞り込み
-  const [websiteFilter, setWebsiteFilter] = useState(false) // (#44) 公式サイト有無
-  const [sortDir, setSortDir] = useState('none') // 'none' | 'name_asc' | 'name_desc'
+  const update = (patch) => dispatch({ type: 'SET_RESULT_FILTERS', payload: patch })
+  const clear = () => dispatch({ type: 'SET_RESULT_FILTERS', payload: { ...DEFAULT_FILTERS } })
+  const active = hasActiveFilters(resultFilters)
+  const displayResults = useMemo(
+    () => applyResultFilters(results, resultFilters),
+    [results, resultFilters]
+  )
 
-  // 絞り込み + ソート
-  const displayResults = useMemo(() => {
-    if (!results) return []
-    let filtered = results
-
-    // 名称絞り込み
-    if (nameFilter.trim()) {
-      const q = nameFilter.trim().toLowerCase()
-      filtered = filtered.filter(r => {
-        const name = (r.name || '').toLowerCase()
-        const tags = r.tags || {}
-        const nameJa = (tags['name:ja'] || '').toLowerCase()
-        return name.includes(q) || nameJa.includes(q)
-      })
-    }
-
-    // 型絞り込み
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(r => r.type === typeFilter)
-    }
-
-    // (#44) POIカテゴリ絞り込み（amenity/shop/tourism等）
-    if (catFilter !== 'all') {
-      filtered = filtered.filter(r => r.tags?.[catFilter])
-    }
-
-    // (#44) 公式サイト有無絞り込み
-    if (websiteFilter) {
-      filtered = filtered.filter(r => r.tags?.['website'] || r.tags?.['official_website'])
-    }
-
-    // ソート
-    if (sortDir === 'name_asc') {
-      filtered = [...filtered].sort((a, b) => (a.name || '〜').localeCompare(b.name || '〜', 'ja'))
-    } else if (sortDir === 'name_desc') {
-      filtered = [...filtered].sort((a, b) => (b.name || '〜').localeCompare(a.name || '〜', 'ja'))
-    }
-
-    return filtered
-  }, [results, nameFilter, typeFilter, catFilter, websiteFilter, sortDir])
-
-  const makeOsmId = (r) => `${r.type}/${r.id}`
-
-  const handleSelect = (result) => {
-    dispatch({ type: 'SET_ACTIVE_RESULT', payload: makeOsmId(result) })
-  }
-
-  // サマリー
-  const stats = useMemo(() => {
-    if (!results || results.length === 0) return null
-    const byType = {}
-    results.forEach(r => { byType[r.type] = (byType[r.type] || 0) + 1 })
-    return { total: results.length, byType }
-  }, [results])
-
-  if (status === 'loading') {
-    return (
-      <div className="p-4 flex items-center justify-center h-full">
-        <div className="flex items-center gap-2 text-slate-500">
-          <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">結果を読み込み中...</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (!results || results.length === 0) {
-    return (
-      <div className="p-4 flex items-center justify-center h-full">
-        <p className="text-sm text-slate-400">検索結果が表示されます</p>
-      </div>
-    )
-  }
-
-  const MAX_DISPLAY = 500
-  const displayList = displayResults.slice(0, MAX_DISPLAY)
+  const grouped = useMemo(() => getGroupedCategories(), [])
+  const fmt = (n) => n.toLocaleString('ja-JP')
 
   return (
-    <div className="h-full flex flex-col">
-      {/* サマリー + 絞り込みバー */}
-      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 space-y-1.5 shrink-0">
-        <div className="flex items-center gap-3 text-xs text-slate-600">
-          <span className="font-medium">{stats.total.toLocaleString()}件</span>
-          {Object.entries(stats.byType).map(([type, count]) => (
-            <span key={type}>{type}: {count}</span>
-          ))}
-          {fetchMeta?.fetchedAt && (
-            <span className="text-slate-400 ml-auto text-[10px]">
-              {new Date(fetchMeta.fetchedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-              {fetchMeta.cached && ' ⚡'}
-            </span>
+    <aside className="bg-white rounded-lg border border-slate-200 flex flex-col flex-1 min-w-0">
+      <div className="p-4 border-b border-slate-200">
+        <div className="text-sm text-slate-600">
+          {active
+            ? <>全 <strong className="text-primary-600">{fmt(results.length)}</strong> 件中、<strong className="text-primary-600">{fmt(displayResults.length)}</strong> 件を表示中</>
+            : <>全 <strong className="text-primary-600">{fmt(results.length)}</strong> 件が見つかりました</>}
+          {searchSource === 'municipality' && selectedMunicipality?.name && (
+            <span className="ml-2 text-xs text-slate-500">（{selectedMunicipality.name} とその周辺）</span>
+          )}
+          {fetchMeta && (
+            <div className="mt-1 text-xs text-slate-500">取得: {Math.round(fetchMeta.elapsedMs)}ms</div>
           )}
         </div>
-        {/* 絞り込み・ソート */}
-        <div className="flex items-center gap-2 flex-wrap">
+
+        {active && (
+          <div className="mt-1 text-xs text-amber-600">
+            表示は絞り込み済みです。CSV / GeoJSON のエクスポートは「表示中」か「すべて」から選べます。
+          </div>
+        )}
+
+        <div className="mt-3 space-y-2">
           <input
-            type="text"
-            value={nameFilter}
-            onChange={(e) => setNameFilter(e.target.value)}
-            placeholder="名称で絞り込み"
-            className="px-2 py-1 text-[11px] border border-slate-200 rounded w-32 focus:outline-none focus:ring-1 focus:ring-primary-300"
+            value={resultFilters.nameFilter}
+            onChange={(e) => update({ nameFilter: e.target.value })}
+            placeholder="名称で絞る（例: 珈琲）"
+            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
-          <select
-            value={catFilter}
-            onChange={(e) => setCatFilter(e.target.value)}
-            className="px-1.5 py-1 text-[11px] border border-slate-200 rounded focus:outline-none"
-          >
-            <option value="all">カテゴリ:全て</option>
-            <option value="amenity">施設(amenity)</option>
-            <option value="shop">店舗(shop)</option>
-            <option value="tourism">観光(tourism)</option>
-            <option value="leisure">レジャー</option>
-            <option value="office">オフィス</option>
-            <option value="healthcare">医療</option>
-            <option value="craft">工房</option>
-          </select>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-1.5 py-1 text-[11px] border border-slate-200 rounded focus:outline-none"
-          >
-            <option value="all">全て</option>
-            <option value="node">node</option>
-            <option value="way">way</option>
-            <option value="relation">relation</option>
-          </select>
-          <label className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={websiteFilter}
-              onChange={(e) => setWebsiteFilter(e.target.checked)}
-              className="w-3 h-3"
-            />
-            🌐公式サイト
-          </label>
-          <button
-            onClick={() => setSortDir(sortDir === 'name_asc' ? 'name_desc' : 'name_asc')}
-            className={`px-2 py-1 text-[11px] border rounded transition-colors ${
-              sortDir !== 'none' ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            名前順 {sortDir === 'name_asc' ? '↑' : sortDir === 'name_desc' ? '↓' : '↕'}
-          </button>
-          {(nameFilter || typeFilter !== 'all' || catFilter !== 'all' || websiteFilter || sortDir !== 'none') && (
-            <button
-              onClick={() => { setNameFilter(''); setTypeFilter('all'); setCatFilter('all'); setWebsiteFilter(false); setSortDir('none') }}
-              className="text-[10px] text-slate-400 hover:text-red-500"
+          <div className="grid grid-cols-3 gap-2">
+            <select
+              value={resultFilters.typeFilter}
+              onChange={(e) => update({ typeFilter: e.target.value })}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded-md bg-white"
+              aria-label="要素種別で絞る"
             >
-              リセット
-            </button>
-          )}
-          {displayResults.length !== stats.total && (
-            <span className="text-[10px] text-slate-400 ml-auto">
-              {displayResults.length.toLocaleString()}/{stats.total.toLocaleString()}件
-            </span>
-          )}
+              <option value="all">すべて</option>
+              <option value="node">点 (node)</option>
+              <option value="way">線面 (way)</option>
+              <option value="relation">relation</option>
+            </select>
+            <select
+              value={resultFilters.catFilter}
+              onChange={(e) => update({ catFilter: e.target.value })}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded-md bg-white"
+              aria-label="施設の種類で絞る"
+            >
+              <option value="">すべての種類</option>
+              {grouped.map((g) => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <select
+              value={resultFilters.sortDir}
+              onChange={(e) => update({ sortDir: e.target.value })}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded-md bg-white"
+              aria-label="並び替え"
+            >
+              <option value="none">並び順: 標準</option>
+              <option value="asc">名称あ-ほ</option>
+              <option value="desc">名称ほ-あ</option>
+            </select>
+          </div>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={resultFilters.websiteOnly}
+                onChange={(e) => update({ websiteOnly: e.target.checked })}
+              />
+              公式サイトがあるものだけ
+            </label>
+            <button onClick={clear} className="text-xs text-slate-500 hover:text-primary-600">クリア</button>
+          </div>
         </div>
       </div>
 
-      {/* テーブル */}
-      <div className="flex-1 overflow-auto min-h-0">
-        <table className="w-full text-[11px] border-collapse">
-          <thead className="bg-slate-50 sticky top-0 z-10">
+      <div className="flex-1 overflow-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500">
             <tr>
-              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">施設名</th>
-              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">カテゴリ</th>
-              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap">OSM ID</th>
-              <th className="text-left px-2 py-1.5 text-slate-500 font-medium whitespace-nowrap min-w-[120px]">主要タグ</th>
+              <th className="px-3 py-2 text-left">#</th>
+              <th className="px-2 py-2 text-left">施設名</th>
+              <th className="px-2 py-2 text-left">タイプ</th>
+              <th className="px-2 py-2 text-left">住所</th>
+              <th className="px-2 py-2 text-left">電話</th>
+              <th className="px-2 py-2 text-left">公式サイト</th>
             </tr>
           </thead>
           <tbody>
-            {displayList.map(result => (
-              <tr
-                key={makeOsmId(result)}
-                onClick={() => handleSelect(result)}
-                className={`border-t border-slate-100 cursor-pointer transition-colors ${
-                  activeResultId === makeOsmId(result)
-                    ? 'bg-primary-50'
-                    : 'hover:bg-slate-50'
-                }`}
-              >
-                <td className="px-2 py-1.5 text-slate-800 max-w-[160px] truncate">
-                  {result.name || <span className="text-slate-400">（名前のない要素）</span>}
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">
-                  {result.tags?.['amenity'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">{result.tags['amenity']}</span>}
-                  {result.tags?.['shop'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">{result.tags['shop']}</span>}
-                  {result.tags?.['tourism'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700">{result.tags['tourism']}</span>}
-                  {result.tags?.['leisure'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-lime-50 text-lime-700">{result.tags['leisure']}</span>}
-                  {result.tags?.['office'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{result.tags['office']}</span>}
-                  {result.tags?.['healthcare'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700">{result.tags['healthcare']}</span>}
-                  {result.tags?.['craft'] && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">{result.tags['craft']}</span>}
-                </td>
-                <td className="px-2 py-1.5 whitespace-nowrap">
-                  <a
-                    href={`https://www.openstreetmap.org/${result.type}/${result.id}`}
-                    target="_blank"
-                    rel="noopener"
-                    className="text-primary-600 hover:text-primary-800 font-mono"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {result.id}
-                  </a>
-                </td>
-                <td className="px-2 py-1.5 text-slate-500 max-w-[200px] truncate">
-                  {result.tags ? Object.entries(result.tags)
-                    .filter(([k]) => !['name', 'name:ja'].includes(k))
-                    .slice(0, 3)
-                    .map(([k, v]) => `${k}=${v}`)
-                    .join(' · ') : ''}
+            {displayResults.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                  {active
+                    ? '条件に一致する施設はありません。フィルタを緩めてみてください。'
+                    : '結果がありません。条件を変更して再検索してください。'}
                 </td>
               </tr>
-            ))}
+            ) : displayResults.map((r, i) => {
+              const website = safeWebsite(r.tags)
+              return (
+                <tr
+                  key={`${r.type}-${r.id}`}
+                  className="border-b border-slate-100"
+                >
+                  <td className="px-3 py-2 text-slate-400 text-xs">{i + 1}</td>
+                  <td className="px-2 py-2 font-medium text-slate-800">{facilityName(r)}</td>
+                  <td className="px-2 py-2 text-slate-600 whitespace-nowrap">{facilityTypeLabel(r)}</td>
+                  <td className="px-2 py-2 text-slate-500">
+                    {formatAddress(r.tags) || <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-2 py-2 text-slate-600 whitespace-nowrap">
+                    {r.tags?.phone || r.tags?.['contact:phone'] || <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-2 py-2">
+                    {website ? (
+                      <a
+                        href={website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-primary-600 hover:underline text-xs"
+                      >開く</a>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
-        {displayResults.length > MAX_DISPLAY && (
-          <p className="px-3 py-2 text-[10px] text-slate-400 text-center">
-            残り {(displayResults.length - MAX_DISPLAY).toLocaleString()}件は表示していません
-            （全{displayResults.length.toLocaleString()}件。CSV/GeoJSONで全件出力できます）
-          </p>
-        )}
       </div>
-    </div>
+    </aside>
   )
 }
 
