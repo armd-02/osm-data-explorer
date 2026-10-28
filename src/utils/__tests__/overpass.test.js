@@ -141,7 +141,7 @@ describe('エンドポイント自動フォールバック（#52: 一次ミラ�
     await expect(
       executeOverpassQuery(QUERY, { endpoint: 'custom' })
     ).rejects.toMatchObject({ type: 'rate_limit' })
-    // custom → public → kumi の3回すべて試行される
+    // custom → public → private_coffee の3回すべて試行される（#56: kumiは稼働停止のため後継ドメインに置換）
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
@@ -291,5 +291,145 @@ describe('cuisineフィルタ（#54: 施設の種類と料理の分離）', () =
     // 空白を含む値は "..." で囲む必要がある
     const { query } = buildSimpleQuery(TEST_BBOX, 'restaurant', '', 'fish & chips')
     expect(query).toContain('[cuisine="fish & chips"]')
+  })
+})
+
+// ---------- Issue #56: 時間予算・診断・リスナー管理 ----------
+describe('フォールバック時間配分と診断（#56）', () => {
+  beforeEach(() => {
+    clearCache()
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('全体予算が大きい場合も、各試行はperAttemptTimeoutで切られる（2回目が1msにならない）', async () => {
+    // 全エンドポイントがハングする場合: 旧方式なら1回目が全体予算を使い切り、
+    // 2回目が1ms程度。新方式では各試行が perAttemptTimeout(30ms) で切り替わる。
+    vi.stubGlobal('fetch', hangingFetch())
+    const t0 = Date.now()
+    await expect(
+      executeOverpassQuery(QUERY, {
+        endpoint: 'custom',
+        totalTimeout: 100000,      // 全体予算100秒（実用上非現実的だが予算切り離しの検証用）
+        perAttemptTimeout: 30      // 試行ごとに30ms
+      })
+    ).rejects.toMatchObject({ type: 'timeout' })
+    const elapsed = Date.now() - t0
+    // 3試行 × 30ms = 90ms程度で終了する（全体予算100秒を待たない）
+    expect(elapsed).toBeLessThan(3000)
+  })
+
+  it('各試行のタイムアウトが error.attempts に記録される（試行先・種別・経過時間）', async () => {
+    vi.stubGlobal('fetch', hangingFetch())
+    let caught
+    try {
+      await executeOverpassQuery(QUERY, {
+        endpoint: 'custom',
+        totalTimeout: 100000,
+        perAttemptTimeout: 20
+      })
+    } catch (e) { caught = e }
+    expect(caught.type).toBe('timeout')
+    // custom → public → private_coffee の3試行すべて記録される
+    expect(caught.attempts).toHaveLength(3)
+    expect(caught.attempts.map(a => a.outcome)).toEqual(['timeout', 'timeout', 'timeout'])
+    expect(caught.attempts[0].elapsedMs).toBeLessThan(2000)
+    // 生のクエリ文字列は診断情報に含まれない（個人情報・容量対策）
+    expect(JSON.stringify(caught.attempts)).not.toContain(QUERY)
+  })
+
+  it('全体予算を使い切った後は残りの候補に送信せず、skipped_budgetとして記録する', async () => {
+    // ファイクタイマーで経過時間を決定論的にし、リアルタイムのタイマージッターに依存しない
+    vi.useFakeTimers()
+    const fetchMock = hangingFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    const p = executeOverpassQuery(QUERY, {
+      endpoint: 'custom',
+      totalTimeout: 40,          // 全体予算40ms
+      perAttemptTimeout: 15000   // 単体上限15秒（予算が支配的）
+    })
+    // reject が await 前に発生しても unhandled rejection にならないよう即catch（結果は try 内で取得）
+    p.catch(() => {})
+    // 1試行目（custom）のタイムアウトタイマーが40msで発火し全予算を消費
+    await vi.advanceTimersByTimeAsync(40)
+    let caught
+    try { await p } catch (e) { caught = e }
+    finally { vi.useRealTimers() }
+    // 2試行目以降は残り予算0のため送信されず、skipped_budgetとして記録される
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(caught.attempts.some(a => a.outcome === 'skipped_budget')).toBe(true)
+  })
+
+  it('成功時は meta.attempts に試行内訳を記録する（フォールバック経路を含む）', async () => {
+    const payload = overpassPayload([
+      { type: 'node', id: 1, lat: 35.68, lon: 139.77, tags: { amenity: 'bank', name: '診断銀行' } }
+    ])
+    const fetchMock = vi.fn(async (url) => {
+      if (String(url).includes('sakura')) {
+        return mockResponse({ status: 500, ok: false, body: { error: 'Internal server error' } })
+      }
+      return mockResponse({ body: payload })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { meta } = await executeOverpassQuery(QUERY, { endpoint: 'custom' })
+    expect(meta.fallback).toBe(true)
+    // custom(500) → public(成功) の2試行が記録される
+    expect(meta.attempts).toHaveLength(2)
+    expect(meta.attempts[0]).toMatchObject({ endpoint: 'custom', outcome: 'server_error', status: 500 })
+    expect(meta.attempts[1]).toMatchObject({ endpoint: 'public', outcome: 'success', status: 200 })
+    // クエリ文字列は含まれない
+    expect(JSON.stringify(meta.attempts)).not.toContain(QUERY)
+  })
+
+  it('全エンドポイント失敗時は error.attempts に3試行の内訳を含める', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    let caught
+    try {
+      await executeOverpassQuery(QUERY, { endpoint: 'custom' })
+    } catch (e) { caught = e }
+    expect(caught.type).toBe('network')
+    expect(caught.attempts).toHaveLength(3)
+    expect(caught.attempts.every(a => a.outcome === 'network')).toBe(true)
+    expect(JSON.stringify(caught.attempts)).not.toContain(QUERY)
+  })
+
+  it('フォールバック先でキャッシュヒットした場合も fallback フラグがtrueとして記録される', async () => {
+    const payload = overpassPayload([
+      { type: 'node', id: 7, lat: 35.68, lon: 139.77, tags: { amenity: 'bank', name: 'キャッシュ銀行' } }
+    ])
+    // 第一段階: public を直接叩いてキャッシュに格納する
+    vi.stubGlobal('fetch', vi.fn(async () => mockResponse({ body: payload })))
+    await executeOverpassQuery(QUERY, { endpoint: 'public', totalTimeout: 5000, perAttemptTimeout: 2000 })
+
+    // 第二段階: custom が500 → public へフォールバック → キャッシュヒット
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (String(url).includes('sakura')) {
+        return mockResponse({ status: 500, ok: false, body: { error: 'boom' } } )
+      }
+      throw new Error('public はキャッシュ済みなので fetch すべきではない')
+    }))
+    const { results, meta } = await executeOverpassQuery(QUERY, { endpoint: 'custom', totalTimeout: 5000, perAttemptTimeout: 2000 })
+    expect(results).toHaveLength(1)
+    expect(meta.cached).toBe(true)
+    expect(meta.fallback).toBe(true)
+    // custom の失敗（500）とキャッシュヒットの内訳が記録される
+    expect(meta.attempts[0]).toMatchObject({ endpoint: 'custom', outcome: 'server_error', status: 500 })
+  })
+
+  it('実行中の外部キャンセルはフォールバックせず終了し、シグナルにリスナーを残さない', async () => {
+    const fetchMock = hangingFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10)
+
+    await expect(
+      executeOverpassQuery(QUERY, { endpoint: 'custom', signal: controller.signal, totalTimeout: 100000, perAttemptTimeout: 5000 })
+    ).rejects.toMatchObject({ type: 'network', message: '検索がキャンセルされました' })
+
+    clearTimeout(timer)
+    // キャンセル時点で最初の試行のみ送信（public・private_coffee には送信されない）
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
