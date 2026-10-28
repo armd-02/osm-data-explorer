@@ -1,56 +1,34 @@
 import React from 'react'
+import {
+  facilityName,
+  formatAddress,
+  safeWebsite,
+  facilityTypeLabel
+} from '../../utils/facilityLabels'
+
+// テスト・他コンポーネントの互換のために再エクスポート
+export { facilityName, formatAddress, safeWebsite }
 
 /**
- * (#59) モバイル施設カード
+ * (#59 / #44) モバイル施設カード
  *
- * タップで施設詳細（ボトムシート）を開く。
- * 未登録の情報を捏造せず、OSM タグに登録済みの情報だけを表示する。
- * OSM ID は補助情報として小さく表示する。
+ * 生活者目線UI（#44）: 生活者の言葉で施設を表示する。
+ *   - 施設名（name / name:ja）
+ *   - 施設タイプ（日本語ラベル: 「カフェ」「公園」「駅」など）
+ *   - 住所 / 電話 / 公式サイト / 営業時間（OSMに未登録なら表示しない。捏造しない）
+ * OSM生データ（node/way、amenity=cafe、OSM ID）はカードの主表示にしない。
+ * 詳細（OSM ID・全タグ）は施設詳細ボトムシート（MobileFacilityDetail）に退ける。
+ *
+ * カード全体がボタン（タップで詳細シート）。未登録フィールドは行ごとに出さない。
  */
-
-const KEY_TAG_ORDER = [
-  'amenity', 'shop', 'tourism', 'leisure', 'railway',
-  'highway', 'sport', 'office', 'building', 'cuisine',
-]
-
-export function facilityName(result) {
-  const name = result.name || (result.tags && result.tags['name:ja'])
-  return name || '名前のない要素'
-}
-
-export function formatAddress(tags) {
-  if (!tags) return ''
-  return [
-    tags['addr:city'],
-    tags['addr:suburb'],
-    tags['addr:street'],
-    tags['addr:housenumber'],
-  ]
-    .filter(Boolean)
-    .join(' ')
-}
-
-export function safeWebsite(tags) {
-  if (!tags) return null
-  const url = tags.website || tags.official_website
-  return url && /^https?:\/\//.test(url) ? url : null
-}
-
-function keyTagEntries(tags, max = 3) {
-  if (!tags) return []
-  const out = []
-  for (const key of KEY_TAG_ORDER) {
-    if (tags[key]) out.push([key, tags[key]])
-    if (out.length >= max) break
-  }
-  return out
-}
-
 export default function MobileFacilityCard({ result, onOpen }) {
   const tags = result.tags || {}
   const name = facilityName(result)
+  const typeLabel = facilityTypeLabel(result)
   const address = formatAddress(tags)
-  const keyTags = keyTagEntries(tags)
+  const phone = tags.phone || tags['contact:phone'] || ''
+  const website = safeWebsite(tags)
+  const openingHours = tags.opening_hours || ''
 
   return (
     <button
@@ -60,24 +38,17 @@ export default function MobileFacilityCard({ result, onOpen }) {
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-800 min-w-0 break-words">{name}</h3>
-        <span className="shrink-0 text-[10px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
-          {result.type}
+        <span className="shrink-0 text-[11px] text-primary-700 bg-primary-50 rounded-md px-2 py-0.5">
+          {typeLabel}
         </span>
       </div>
 
-      {keyTags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {keyTags.map(([k, v]) => (
-            <span key={k} className="text-[11px] text-primary-700 bg-primary-50 rounded-md px-1.5 py-0.5">
-              {v}
-            </span>
-          ))}
-        </div>
-      )}
-
       {address && <p className="text-xs text-slate-600">📍 {address}</p>}
-
-      <p className="text-[10px] text-slate-400 font-mono">{result.type}/{result.id}</p>
+      {phone && <p className="text-xs text-slate-600">📞 {phone}</p>}
+      {openingHours && <p className="text-xs text-slate-600">🕐 {openingHours}</p>}
+      {website && (
+        <p className="text-xs text-primary-600">🌐 公式サイト（詳細で開けます）</p>
+      )}
     </button>
   )
 }

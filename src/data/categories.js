@@ -195,16 +195,22 @@ export function getCategoryById(id) {
 }
 
 /**
- * カテゴリの粒度が混在（広義グループ／単一タイプ／上位カテゴリのサブセット）するため、
- * セレクトボックスはドメイン別の <optgroup> で表示し、グループ内は「広い → 狭い」順に並べる。
+ * (#44 改訂 2026-10-28) 目的ベースの施設グループ — 「生活者目線UI」
+ *
+ * OSMタグキー（amenity=…など）を上位カテゴリにしない代わりに、利用目的で
+ * グループ化する: 食べる／買う／遊ぶ／暮らす／学ぶ／その他。
+ * PCのカテゴリselectの <optgroup> ラベルと、モバイルの目的チップで同じ
+ * 定義を共有する（単一データソース）。各カテゴリはちょうど1つのグループに
+ * 属する（分区）。icon はモバイルの目的チップ表示用（emoji）。
  * グループ内の順序はここで制御する（CATEGORIES 配列の順序に依存しない）。
  */
 export const CATEGORY_GROUPS = [
-  { name: '飲食', ids: ['food_drink', 'cafe', 'restaurant', 'fast_food', 'bar_izakaya'] },
-  { name: '買い物・薬局', ids: ['retail', 'convenience', 'pharmacy', 'hospital'] },
-  { name: '教育・公共施設', ids: ['public_facility', 'school', 'park', 'worship', 'toilets'] },
-  { name: '交通・宿泊', ids: ['transport', 'accommodation'] },
-  { name: 'レジャー・文化・金融', ids: ['sports', 'museum', 'bank'] }
+  { name: '食べる', icon: '🍜', ids: ['food_drink', 'cafe', 'restaurant', 'fast_food', 'bar_izakaya'] },
+  { name: '買う', icon: '🛍️', ids: ['retail', 'convenience'] },
+  { name: '遊ぶ', icon: '🎠', ids: ['park', 'sports', 'museum', 'worship', 'accommodation'] },
+  { name: '暮らす', icon: '🏠', ids: ['public_facility', 'hospital', 'pharmacy', 'bank', 'toilets'] },
+  { name: '学ぶ', icon: '📚', ids: ['school'] },
+  { name: 'その他', icon: '🧭', ids: ['transport'] }
 ]
 
 /**
@@ -238,8 +244,27 @@ export const CUISINES = [
  */
 export function isFoodCategory(id) {
   if (!id) return false
-  const foodGroup = CATEGORY_GROUPS.find((g) => g.name === '飲食')
+  const foodGroup = CATEGORY_GROUPS.find((g) => g.name === '食べる')
   return !!foodGroup && foodGroup.ids.includes(id)
+}
+
+/**
+ * (#44) 目的グループ名（'食べる'など）からカテゴリ一覧を取得
+ * @param {string} purposeName - '食べる' | '買う' | '遊ぶ' | '暮らす' | '学ぶ' | 'その他'
+ * @returns {Array<object>|null} カテゴリ配列、未知の目的ならnull
+ */
+export function getCategoriesForPurpose(purposeName) {
+  const group = CATEGORY_GROUPS.find((g) => g.name === purposeName)
+  if (!group) return null
+  return group.ids.map((id) => getCategoryById(id)).filter(Boolean)
+}
+
+/**
+ * (#44) 指定カテゴリが属する目的グループ名を返す（'食べる'など）、属さない場合は null
+ */
+export function getPurposeOfCategory(categoryId) {
+  const group = CATEGORY_GROUPS.find((g) => g.ids.includes(categoryId))
+  return group ? group.name : null
 }
 
 /**

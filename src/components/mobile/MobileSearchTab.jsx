@@ -11,6 +11,18 @@ import SearchActionButton from '../SearchActionButton'
 import ShareButton from '../ShareButton'
 
 /**
+ * (#44) サンプルアクション（生活者目線の入口）
+ * 「コーヒーを探す」のように目的単位でタップすると、
+ * 現在のエリア+カテゴリで即検索される。
+ */
+const SAMPLE_ACTIONS = [
+  { icon: '☕', label: 'コーヒー', catId: 'cafe' },
+  { icon: '🏪', label: 'コンビニ', catId: 'convenience' },
+  { icon: '🌳', label: '公園', catId: 'park' },
+  { icon: '💊', label: '薬局', catId: 'pharmacy' },
+]
+
+/**
  * (#59) モバイル「検索」タブ
  *
  * 入力順（優先度順）: 1) エリア 2) 施設カテゴリ 3) 施設名・キーワード 4) 検索実行
@@ -49,6 +61,7 @@ export default function MobileSearchTab({ onViewResults }) {
   const { search, cancel } = useSearch()
   const { searchSource, searchMode, bbox, selectedMunicipality } = state
   const [boundsVersion, setBoundsVersion] = useState(0)
+  const [sampleMsg, setSampleMsg] = useState(null)
 
   const switchSource = (source) => {
     if (source === state.searchSource) return
@@ -93,6 +106,24 @@ export default function MobileSearchTab({ onViewResults }) {
     search(c)
   }
 
+  // (#44) サンプルアクション: 現在のエリア+目的カテゴリで即検索
+  const handleSample = (catId) => {
+    const map = getMapInstance()
+    const mapBounds =
+      searchSource === 'map' && map && typeof map.getBounds === 'function' ? map.getBounds() : null
+    const next =
+      searchSource === 'municipality'
+        ? { ...state, municipalitySearch: { ...state.municipalitySearch, category: catId } }
+        : { ...state, simpleSearch: { ...state.simpleSearch, category: catId } }
+    const c = buildSearchCriteria(next, mapBounds ? { mapBounds } : {})
+    if (c.ok !== true) {
+      setSampleMsg(c.message || '先に検索エリアを設定してください')
+      return
+    }
+    setSampleMsg(null)
+    search(c)
+  }
+
   const sourceBtn = (id, label) => (
     <button
       type="button"
@@ -120,17 +151,17 @@ export default function MobileSearchTab({ onViewResults }) {
 
         {searchSource === 'municipality' ? (
           /* エリア(都道府県・市区町村)＋カテゴリ・料理・キーワードをMunicipalitySearchが一括表示 */
-          <MunicipalitySearch />
+          <MunicipalitySearch variant="mobile" />
         ) : (
           <>
             {/* 1) エリア */}
             <section className="bg-slate-50 border border-slate-200 rounded-xl p-3" aria-label="検索範囲">
-              <h2 className="text-[11px] font-medium text-slate-500 mb-1.5">1. 検索範囲</h2>
+              <h2 className="text-[11px] font-medium text-slate-500 mb-1.5">どの街・エリアで探す？</h2>
               <AreaCard state={state} />
             </section>
 
             {/* 2) カテゴリ / 3) キーワード */}
-            {isAdvanced ? <AdvancedSearch /> : <SimpleSearch />}
+            {isAdvanced ? <AdvancedSearch /> : <SimpleSearch variant="mobile" />}
 
             {/* 詳細条件の段階的開示 */}
             <button
@@ -144,6 +175,30 @@ export default function MobileSearchTab({ onViewResults }) {
         )}
 
         <ShareButton />
+
+        {/* (#44) サンプルアクション: 「探す」の入口を明示する */}
+        <section aria-label="サンプル検索" className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+          <h2 className="text-[11px] font-medium text-blue-700 mb-1.5">サンプル検索で試す</h2>
+          <div className="grid grid-cols-2 gap-1.5">
+            {SAMPLE_ACTIONS.map((s) => (
+              <button
+                key={s.catId}
+                type="button"
+                onClick={() => handleSample(s.catId)}
+                className="min-h-[44px] rounded-lg bg-white border border-slate-200 px-2 text-sm text-slate-700 active:bg-slate-50"
+              >
+                {s.icon} {s.label}
+              </button>
+            ))}
+          </div>
+          {sampleMsg ? (
+            <p className="mt-1.5 text-[11px] text-amber-700">⚠️ {sampleMsg}</p>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              現在のエリアでその目的の施設をすぐ検索します。
+            </p>
+          )}
+        </section>
       </div>
 
       {/* 4) 検索実行（スロールームの外に固定 — P0 再発防止） */}

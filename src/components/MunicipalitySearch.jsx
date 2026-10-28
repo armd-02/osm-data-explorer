@@ -1,6 +1,18 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { getGroupedCategories, CUISINES, isFoodCategory } from '../data/categories'
+import { CATEGORY_GROUPS, getCategoriesForPurpose, CUISINES, isFoodCategory } from '../data/categories'
+import CategoryPicker from './CategoryPicker'
+
+/**
+ * (#44 生活者目線UI)
+ * variant='mobile' の場合:
+ *   - カテゴリは目的アイコンチップ（CategoryPicker）で選ぶ
+ *   - ラベルを生活者の言葉に（「どの街で探す？」「何を探す？」）
+ *   - OSMデータ補完性の注意を分かりやすい表現で表示
+ * PC（デフォルト）は従来の <select> 表示を維持する。
+ */
+export default function MunicipalitySearch({ variant = 'pc' }) {
+  const isMobile = variant === 'mobile'
 
 /**
  * (#44) 自治体別施設検索
@@ -9,7 +21,6 @@ import { getGroupedCategories, CUISINES, isFoodCategory } from '../data/categori
  */
 
 // 都道府県リストを動的生成（データ読み込み後にセット）
-export default function MunicipalitySearch() {
   const { state, dispatch } = useApp()
 
   const [data, setData] = useState(null) // municipalities.json
@@ -135,7 +146,7 @@ export default function MunicipalitySearch() {
     <div className="space-y-3">
       {/* 都道府県選択 */}
       <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1">都道府県</label>
+        <label className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの県で探す？' : '都道府県'}</label>
         <select
           value={prefCode}
           onChange={handlePrefChange}
@@ -151,7 +162,7 @@ export default function MunicipalitySearch() {
       {/* 市区町村選択 */}
       {prefCode && (
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">市区町村</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの市区町村で探す？' : '市区町村'}</label>
           <select
             value={munCode}
             onChange={handleMunChange}
@@ -172,21 +183,33 @@ export default function MunicipalitySearch() {
       {selectedMun && (
         <>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">カテゴリ（任意）</label>
-            <select
-              value={category}
-              onChange={(e) => updateMunicipalitySearch('category', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            >
-              <option value="">すべて（POI）</option>
-              {getGroupedCategories().map(g => (
-                <optgroup key={g.group} label={g.group}>
-                  {g.categories.map(c => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
+            {isMobile ? (
+              <>
+                <label className="block text-xs font-medium text-slate-600 mb-1">何を探す？（任意）</label>
+                <CategoryPicker variant="mobile" value={category} onChange={(id) => updateMunicipalitySearch('category', id)} />
+                <p className="mt-1.5 text-[11px] text-slate-400">
+                  ※ 掲載は OpenStreetMap（OSM）の登録情報です。すべての施設が登録されているわけではありません。
+                </p>
+              </>
+            ) : (
+              <>
+                <label className="block text-xs font-medium text-slate-600 mb-1">カテゴリ（任意）</label>
+                <select
+                  value={category}
+                  onChange={(e) => updateMunicipalitySearch('category', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="">すべて（POI）</option>
+                  {CATEGORY_GROUPS.map(g => (
+                    <optgroup key={g.name} label={`${g.icon} ${g.name}`}>
+                      {getCategoriesForPurpose(g.name).map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </optgroup>
                   ))}
-                </optgroup>
-              ))}
-            </select>
+                </select>
+              </>
+            )}
           </div>
 
           {/* (#54) 料理フィルタ: 飲食カテゴリ選択時のみ表示 */}
@@ -207,7 +230,7 @@ export default function MunicipalitySearch() {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">キーワード（任意）</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? '施設名・キーワード（任意）' : 'キーワード（任意）'}</label>
             <input
               type="text"
               value={keyword}

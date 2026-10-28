@@ -116,7 +116,7 @@ function App() {
       searchSource: 'map',
       selectedMunicipality: null,
       municipalitySearch: { category: '', keyword: '', cuisine: '' },
-      resultFilters: { nameFilter: '', catFilter: '', websiteOnly: false, sortDir: 'none' }
+      resultFilters: { nameFilter: '', typeFilter: 'all', catFilter: '', websiteOnly: false, sortDir: 'none' }
     }
   )
 

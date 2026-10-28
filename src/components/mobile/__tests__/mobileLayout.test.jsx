@@ -5,6 +5,7 @@ import { render, screen, fireEvent, waitFor, within, cleanup, act } from '@testi
 import App from '../../../App'
 import { getMapInstance } from '../../../hooks/useMapRef'
 import { clearCache } from '../../../utils/overpass'
+import { CATEGORY_GROUPS, getCategoriesForPurpose } from '../../../data/categories'
 
 // (#59) モバイルレイアウト E2E テスト
 //
@@ -181,22 +182,38 @@ function getSelectByLabel(label) {
   return node?.querySelector('select')
 }
 
-async function selectMunicipality(prefText, munText) {
+/**
+ * (#44) 目的チップ→カテゴリチップ でカテゴリを選択する
+ * 例: selectCategoryChip('カフェ') → 「食べる」をタップ → 「カフェ」をタップ
+ */
+function selectCategoryChip(catLabel) {
+  for (const g of CATEGORY_GROUPS) {
+    const cats = getCategoriesForPurpose(g.name) || []
+    const cat = cats.find((c) => c.label === catLabel)
+    if (!cat) continue
+    fireEvent.click(screen.getByRole('button', { name: g.name }))
+    fireEvent.click(screen.getByRole('button', { name: catLabel }))
+    return true
+  }
+  throw new Error(`カテゴリチップが見つからない: ${catLabel}`)
+}
+
+async function selectMunicipality(prefText, munText, prefLabel = '都道府県', munLabel = '市区町村') {
   await waitFor(() => {
-    expect(screen.getByText('都道府県')).toBeTruthy()
+    expect(screen.getByText(prefLabel)).toBeTruthy()
   }, { timeout: 3000 })
-  const prefSelect = getSelectByLabel('都道府県')
+  const prefSelect = getSelectByLabel(prefLabel)
   expect(prefSelect).toBeTruthy()
   const prefOpt = [...prefSelect.querySelectorAll('option')].find((o) => o.textContent === prefText)
   expect(prefOpt).toBeTruthy()
   fireEvent.change(prefSelect, { target: { value: prefOpt.value } })
 
   await waitFor(() => {
-    const s = getSelectByLabel('市区町村')
+    const s = getSelectByLabel(munLabel)
     expect(s).toBeTruthy()
     expect(s.querySelectorAll('option').length).toBeGreaterThan(1)
   }, { timeout: 3000 })
-  const munSelect = getSelectByLabel('市区町村')
+  const munSelect = getSelectByLabel(munLabel)
   const munOpt = [...munSelect.querySelectorAll('option')].find((o) => o.textContent.startsWith(munText))
   expect(munOpt).toBeTruthy()
   fireEvent.change(munSelect, { target: { value: munOpt.value } })
@@ -276,10 +293,8 @@ describe('(#59) 検索タブ: 地図モード検索', () => {
   it('カテゴリ選択→検索する: クエリにカテゴリと地図BBOXが反映され、結果が表示される', async () => {
     renderApp()
 
-    // カテゴリ=cafe を選択
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    expect(catSelect).toBeTruthy()
-    fireEvent.change(catSelect, { target: { value: 'cafe' } })
+    // カテゴリ=cafe を目的チップで選択（食べる → カフェ）
+    expect(selectCategoryChip('カフェ')).toBe(true)
 
     // フッター（スロールームの外）の「検索する」を押す
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
@@ -297,8 +312,7 @@ describe('(#59) 検索タブ: 地図モード検索', () => {
   it('検索成功後は「一覧」タブへ自動切替され、施設カードが表示される', async () => {
     renderApp()
 
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    fireEvent.change(catSelect, { target: { value: 'cafe' } })
+    selectCategoryChip('カフェ')
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
 
     await waitFor(() => {
@@ -333,9 +347,8 @@ describe('(#59) 地図タブ: 明示的な検索トリガー', () => {
   it('「この表示範囲で検索」押下で地図BBOXを検索に使用する', async () => {
     renderApp()
 
-    // 検索タブでカテゴリを設定
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    fireEvent.change(catSelect, { target: { value: 'restaurant' } })
+    // 検索タブでカテゴリを設定（レストラン）
+    selectCategoryChip('レストラン')
 
     // 地図タブへ移動（この時点でOverpass呼び出しは起きていない）
     clickTab('地図')
@@ -364,8 +377,7 @@ describe('(#59) 地図タブ: 明示的な検索トリガー', () => {
   it('マーカータップで施設詳細ボトムシートが開く', async () => {
     renderApp()
 
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    fireEvent.change(catSelect, { target: { value: 'cafe' } })
+    selectCategoryChip('カフェ')
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
 
     // 結果が地図タブのマーカーに反映されるまで待つ
@@ -389,8 +401,7 @@ describe('(#59) 施設カード→詳細ボトムシート→地図で見る', (
   it('カードタップ→詳細表示→「地図で見る」で地図タブに移動する', async () => {
     renderApp()
 
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    fireEvent.change(catSelect, { target: { value: 'cafe' } })
+    selectCategoryChip('カフェ')
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
 
     // 一覧タブがアクティブになりカードが表示される
@@ -441,8 +452,7 @@ describe('(#59) 一覧タブ: クライアント側フィルタ', () => {
   it('施設名フィルタでカードが絞られ、件数表示も更新される', async () => {
     renderApp()
 
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    fireEvent.change(catSelect, { target: { value: 'cafe' } })
+    selectCategoryChip('カフェ')
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
 
     await waitFor(() => {
@@ -482,8 +492,7 @@ describe('(#59) 一覧タブ: クライアント側フィルタ', () => {
       return { ok: false, status: 404, headers: new Map(), json: async () => ({}) }
     })
 
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    fireEvent.change(catSelect, { target: { value: 'cafe' } })
+    selectCategoryChip('カフェ')
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
 
     // 0件ガイダンスが表示され、一覧タブに自動切替される
@@ -503,8 +512,8 @@ describe('(#59) 自治体モード検索', () => {
     // ソース切替（検索タブ内のタブボタン）
     fireEvent.click(screen.getByRole('tab', { name: '自治体で検索' }))
 
-    // 大阪府→大阪市（都府県レベル）を選択
-    await selectMunicipality('大阪府', '大阪市（都府県）')
+    // 大阪府→大阪市（都府県レベル）を選択（モバイルラベル）
+    await selectMunicipality('大阪府', '大阪市（都府県）', 'どの県で探す？', 'どの市区町村で探す？')
 
     // 検索（カテゴリ未選択=POI検索）
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
@@ -523,14 +532,66 @@ describe('(#59) 自治体モード検索', () => {
   }, IT_TIMEOUT)
 })
 
+describe('(#44) 目的チップとサンプル検索', () => {
+  it('目的チップ: 「買う」をタップすると具体カテゴリチップが展開し、選択すると解除ボタンが出る', () => {
+    renderApp()
+
+    // 「買う」目的チップをタップ → 2つのカテゴリチップが展開
+    fireEvent.click(screen.getByRole('button', { name: '買う' }))
+    expect(screen.getByRole('button', { name: 'コンビニ・スーパー' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '小売店' })).toBeTruthy()
+
+    // 「コンビニ・スーパー」を選択 → 選択中バッジと解除ボタン（チップ行は閉じる）
+    fireEvent.click(screen.getByRole('button', { name: 'コンビニ・スーパー' }))
+    expect(screen.getByText(/コンビニ・スーパー/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '解除' })).toBeTruthy()
+
+    // 解除で選択がリセットされる（チップ行も閉じる）
+    fireEvent.click(screen.getByRole('button', { name: '解除' }))
+    expect(screen.queryByRole('button', { name: 'コンビニ・スーパー' })).toBeNull()
+  }, IT_TIMEOUT)
+
+  it('サンプル検索: 「コーヒー」タップで現在のエリア+cafe検索が即実行される', async () => {
+    renderApp()
+
+    fireEvent.click(screen.getByRole('button', { name: /コーヒー/ }))
+
+    await waitFor(() => expect(overpassCalls).toHaveLength(1), { timeout: 8000 })
+    expect(overpassCalls[0]).toContain('amenity=cafe')
+    expect(overpassCalls[0]).toContain('34.800000,135.400000,34.900000,135.600000')
+
+    // 結果表示＋一覧タブ自動切替
+    await waitFor(() => {
+      expect(screen.getByText('3件の結果を取得しました')).toBeTruthy()
+    }, { timeout: 8000 })
+    expect(tabIsCurrent('一覧')).toBe(true)
+  }, IT_TIMEOUT)
+
+  it('自治体モードで市区町村未選択のときサンプルタップは注意メッセージを表示し検索しない', async () => {
+    renderApp()
+
+    // 自治体モードへ切替
+    fireEvent.click(screen.getByRole('tab', { name: '自治体で検索' }))
+    await waitFor(() => {
+      expect(screen.getByText('どの県で探す？')).toBeTruthy()
+    }, { timeout: 3000 })
+
+    // 市区町村未選択のまま「公園」サンプルをタップ
+    fireEvent.click(screen.getByRole('button', { name: /公園/ }))
+    const sampleSection = screen.getByRole('region', { name: 'サンプル検索' })
+    await waitFor(() => {
+      expect(within(sampleSection).getByText(/自治体が未選択/)).toBeTruthy()
+    }, { timeout: 3000 })
+    expect(overpassCalls).toHaveLength(0)
+  }, IT_TIMEOUT)
+})
+
 describe('(#59) エラー表示の継続性', () => {
   it('全エンドポイント失敗時もエラーbannerが表示され、タブ切替をまたいで残る', async () => {
     overpassStatus = 503
     renderApp()
 
-    const catSelect = getSelectByLabel('探したいカテゴリ')
-    expect(catSelect).toBeTruthy()
-    fireEvent.change(catSelect, { target: { value: 'cafe' } })
+    selectCategoryChip('カフェ')
     fireEvent.click(screen.getByRole('button', { name: '検索する' }))
 
     // フォールバックチェーン（3エンドポイント）を順に試したあとエラーになる
