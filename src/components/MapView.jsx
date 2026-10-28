@@ -32,7 +32,7 @@ const MAX_MAP_MARKERS = 500
  * - 矩形指定・「この範囲を設定」ボタンは廃止
  * - 施設選択のpanToでBBOXが変わらない
  */
-function MapView() {
+function MapView({ onMarkerClick = null }) {
   const mapRef = useRef(null)       // DOM要素ref
   const leafletRef = useRef(null)   // Leaflet Mapインスタンスref
   const bboxLayerRef = useRef(null)
@@ -148,28 +148,33 @@ function MapView() {
             })
           }).addTo(map)
 
-          const name = escapeHtml(result.name || '（名前のない要素）')
-          const type = escapeHtml(result.type || 'node')
-          const osmUrl = `https://www.openstreetmap.org/${result.type}/${result.id}`
-          const keyTags = Object.entries(result.tags || {})
-            .filter(([k]) => k !== 'name' && k !== 'name:ja')
-            .slice(0, 3)
-            .map(([k, v]) => `<div style="color:#555;font-size:11px">${escapeHtml(k)}: ${escapeHtml(v)}</div>`)
-            .join('')
-          marker.bindPopup(`
-            <div style="font-size: 12px; min-width: 160px; max-width: 220px;">
-              <strong>${name}</strong><br/>
-              <span style="color:#666">${type} / ID: ${result.id}</span><br/>
-              <a href="${osmUrl}" target="_blank" rel="noopener" style="color:#2563eb;font-size:11px">🔗 OSMで開く</a>
-              ${keyTags}
-            </div>
-          `)
+          if (onMarkerClick) {
+            // (#59) モバイル: マーカータップで施設詳細ボトムシートを開く（ポップアップ非表示）
+            marker.on('click', () => onMarkerClick(result))
+          } else {
+            const name = escapeHtml(result.name || '（名前のない要素）')
+            const type = escapeHtml(result.type || 'node')
+            const osmUrl = `https://www.openstreetmap.org/${result.type}/${result.id}`
+            const keyTags = Object.entries(result.tags || {})
+              .filter(([k]) => k !== 'name' && k !== 'name:ja')
+              .slice(0, 3)
+              .map(([k, v]) => `<div style="color:#555;font-size:11px">${escapeHtml(k)}: ${escapeHtml(v)}</div>`)
+              .join('')
+            marker.bindPopup(`
+              <div style="font-size: 12px; min-width: 160px; max-width: 220px;">
+                <strong>${name}</strong><br/>
+                <span style="color:#666">${type} / ID: ${result.id}</span><br/>
+                <a href="${osmUrl}" target="_blank" rel="noopener" style="color:#2563eb;font-size:11px">🔗 OSMで開く</a>
+                ${keyTags}
+              </div>
+            `)
+          }
 
           markersRef.current.push(marker)
         }
       })
     }
-  }, [results])
+  }, [results, onMarkerClick])
 
   // Highlight active result — panToで移動（BBOXは変更しない）
   useEffect(() => {
