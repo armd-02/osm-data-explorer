@@ -10,12 +10,17 @@ const ERROR_LABELS = {
   invalid_query: 'クエリエラー'
 }
 
-function StatusBanner() {
+function StatusBanner({ onViewResults = null }) {
   const { state } = useApp()
   const { status, error, errorType, errorSuggestion, results, fetchMeta } = state
 
   // モバイルで検索後に結果パネルへ直接スクロールするための導線
   const scrollToResults = () => {
+    if (onViewResults) {
+      // (#59) モバイル: 「結果を見る」で一覧タブへ切替
+      onViewResults()
+      return
+    }
     document.getElementById('results-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 

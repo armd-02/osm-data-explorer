@@ -16,6 +16,8 @@ import { getMapInstance } from './hooks/useMapRef'
 import { useSearch } from './hooks/useSearch'
 import { buildSearchCriteria } from './utils/searchCriteria'
 import SearchActionButton from './components/SearchActionButton'
+import { useIsMobile } from './hooks/useIsMobile'
+import MobileShell from './components/mobile/MobileShell'
 import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
 
 // メインタブ定義
@@ -30,6 +32,8 @@ function App() {
   const [mainTab, setMainTab] = useState('search')
   const [showMap, setShowMap] = useState(true)
   const [searchCollapsed, setSearchCollapsed] = useState(false)
+  // (#59) モバイル幅（<1024px）ではモバイル専用レイアウト（下部ナビ4タブ）
+  const isMobile = useIsMobile()
   const [state, dispatch] = React.useReducer(
     (state, action) => {
       switch (action.type) {
@@ -91,6 +95,8 @@ function App() {
           return { ...state, selectedMunicipality: action.payload }
         case 'SET_MUNICIPALITY_SEARCH':
           return { ...state, municipalitySearch: { ...state.municipalitySearch, ...action.payload } }
+        case 'SET_RESULT_FILTERS':
+          return { ...state, resultFilters: { ...state.resultFilters, ...action.payload } }
         default:
           return state
       }
@@ -109,7 +115,8 @@ function App() {
       activeResultId: null,
       searchSource: 'map',
       selectedMunicipality: null,
-      municipalitySearch: { category: '', keyword: '', cuisine: '' }
+      municipalitySearch: { category: '', keyword: '', cuisine: '' },
+      resultFilters: { nameFilter: '', catFilter: '', websiteOnly: false, sortDir: 'none' }
     }
   )
 
@@ -132,6 +139,17 @@ function App() {
       if (urlState.municipalitySearch) dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: urlState.municipalitySearch })
     }
   }, [dispatch])
+
+  // (#59) モバイル: 下部ナビゲーションの専用レイアウト（PCレイアウトは変更なし）
+  if (isMobile) {
+    return (
+      <AppContext.Provider value={{ state, dispatch }}>
+        <BatchMatchProvider>
+          <MobileShell />
+        </BatchMatchProvider>
+      </AppContext.Provider>
+    )
+  }
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>

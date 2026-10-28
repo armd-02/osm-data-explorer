@@ -74,3 +74,46 @@ describe('SearchActionButton', () => {
     expect(onSearch).toHaveBeenCalledTimes(1)
   })
 })
+
+/**
+ * (#59) モバイル fullWidth バリアント
+ * - 幅100%・高さ44px以上のタップターゲット
+ * - カスタムlabel（地図タブの「この表示範囲で検索」）
+ * - 検索中は「検索中...」状態 + 全幅の「中止」ボタン
+ * - 条件不足時はdisable + ボタン下のヒント
+ */
+describe('SearchActionButton（モバイル fullWidth バリアント）', () => {
+  it('fullWidth: 全幅・44px以上のタップターゲットになる', () => {
+    render(<SearchActionButton fullWidth criteria={OK_CRITERIA} status="idle" onSearch={vi.fn()} onCancel={vi.fn()} />)
+    const btn = screen.getByRole('button', { name: '検索する' })
+    expect(btn.className).toContain('w-full')
+    expect(btn.className).toContain('min-h-[48px]')
+  })
+
+  it('fullWidth: label プロパティでボタンテキストを変更できる', () => {
+    render(<SearchActionButton fullWidth label="この表示範囲で検索" criteria={OK_CRITERIA} status="idle" onSearch={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'この表示範囲で検索' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '検索する' })).toBeNull()
+  })
+
+  it('fullWidth: 検索中は「検索中...」と全幅の「中止」ボタンが表示される', () => {
+    const onCancel = vi.fn()
+    render(<SearchActionButton fullWidth criteria={OK_CRITERIA} status="loading" onSearch={vi.fn()} onCancel={onCancel} />)
+    expect(screen.getByText('検索中...')).toBeTruthy()
+    const cancelBtn = screen.getByRole('button', { name: '中止' })
+    expect(cancelBtn.className).toContain('w-full')
+    fireEvent.click(cancelBtn)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('fullWidth: 条件不足時はdisableされ、ボタン下に理由ヒントが表示される', () => {
+    const onSearch = vi.fn()
+    const bad = { ok: false, reason: 'no_bbox', message: '検索範囲が設定されていません。', suggestion: '地図を移動・拡大して検索したい範囲を表示してください。' }
+    render(<SearchActionButton fullWidth criteria={bad} status="idle" onSearch={onSearch} onCancel={vi.fn()} />)
+    const btn = screen.getByRole('button', { name: '検索する' })
+    expect(btn.disabled).toBe(true)
+    expect(screen.getByText('検索範囲が設定されていません。')).toBeTruthy()
+    fireEvent.click(btn)
+    expect(onSearch).not.toHaveBeenCalled()
+  })
+})
