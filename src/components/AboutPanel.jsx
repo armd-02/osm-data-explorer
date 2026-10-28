@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { OVERPASS_ENDPOINTS, APP_CONFIG } from '../config'
+import { OVERPASS_ENDPOINTS, APP_CONFIG, FALLBACK_ENDPOINT_ORDER } from '../config'
 
 /**
  * データ品質・出典・利用上の注意
@@ -50,7 +50,7 @@ function AboutPanel() {
               <ul className="space-y-0.5 text-[11px] text-slate-500">
                 <li>Overpass: {OVERPASS_ENDPOINTS[APP_CONFIG.overpassEndpoint]?.label || APP_CONFIG.overpassEndpoint}</li>
                 <li>最大結果: {APP_CONFIG.maxResults.toLocaleString()}件</li>
-                <li>タイムアウト: {APP_CONFIG.timeoutMs / 1000}秒</li>
+                <li>タイムアウト: 試行ごとに {APP_CONFIG.perAttemptTimeoutMs / 1000}秒 / 全体 {APP_CONFIG.totalTimeoutMs / 1000}秒</li>
                 <li>BBOX上限: {APP_CONFIG.maxBboxAreaKm2.toLocaleString()} km²</li>
                 <li>キャッシュ: {APP_CONFIG.cacheEnabled ? `有効（${APP_CONFIG.cacheMaxEntries}件）` : '無効'}</li>
               </ul>
@@ -144,7 +144,8 @@ function AboutPanel() {
                 <p className="font-medium text-red-800 mb-1">⚡ Overpass APIの制約</p>
                 <ul className="text-[11px] space-y-0.5">
                   <li>• レート制限: 連続クエリは1秒間隔以上</li>
-                  <li>• タイムアウト: {APP_CONFIG.timeoutMs / 1000}秒超過で中断</li>
+                  <li>• タイムアウト: 試行ごとに {APP_CONFIG.perAttemptTimeoutMs / 1000}秒、全体 {APP_CONFIG.totalTimeoutMs / 1000}秒</li>
+                  <li>• 失敗時は自動で別エンドポイントにフォールバック（{FALLBACK_ENDPOINT_ORDER.join(' → ')}）</li>
                   <li>• BBOX面積上限: {APP_CONFIG.maxBboxAreaKm2.toLocaleString()} km²</li>
                   <li>• 結果上限: {APP_CONFIG.maxResults.toLocaleString()}件</li>
                   <li>• サーバー負荷により一時的に利用不可の場合あり</li>

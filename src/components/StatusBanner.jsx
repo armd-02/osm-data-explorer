@@ -84,6 +84,7 @@ function StatusBanner() {
               取得: {timeStr}
               {fetchMeta?.cached && '（キャッシュ）'}
               {fetchMeta?.endpoint && ` / ${fetchMeta.endpoint}`}
+              {fetchMeta?.fallback && '（フォールバック利用）'}
             </span>
           )}
         </div>

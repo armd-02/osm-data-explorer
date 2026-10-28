@@ -243,6 +243,7 @@ async function attemptQuery(url, query, controller) {
       `${retryAfter}秒待ってから再実行してください。`
     )
     err.retryable = true
+    err.status = response.status
     throw err
   }
 
@@ -254,6 +255,7 @@ async function attemptQuery(url, query, controller) {
       '数分待ってから再試行してください。'
     )
     err.retryable = true
+    err.status = response.status
     throw err
   }
 
@@ -265,6 +267,7 @@ async function attemptQuery(url, query, controller) {
       'クエリ内容を確認して再試行してください。'
     )
     err.retryable = true
+    err.status = response.status
     throw err
   }
 
@@ -286,17 +289,28 @@ async function attemptQuery(url, query, controller) {
 
 /**
  * Overpass API にクエリを実行
- * 失敗時は自動で次のインスタンスにフォールバックする（#52）。
+ * 失敗時は自動で次のインスタンスにフォールバックする（#52、#56で時間配分を修正）。
  * 試行チェーン: 指定endpoint → FALLBACK_ENDPOINT_ORDER 順（重複除去）。
  * クエリエラー(invalid_query)と手動キャンセルはフォールバックしない。
+ *
+ * (#56) 時間配分: 単体試行の上限(perAttemptTimeout)と検索全体の予算(totalTimeout)を
+ * 別々に設ける。各試行は min(perAttemptTimeout, 全体残り) を使い、残りがなければ
+ * 試行せず期限切れとして終了する。これにより「最初の通信で予算を使い切って
+ * 2回目以降が1ms」という状態を防ぐ。
+ *
+ * (#56) 診断: 各試行の試行先・結果種別・HTTPステータス・経過時間を attempts 配列に
+ * 記録し、成功時は meta.attempts、全失敗時はエラーの error.attempts として返す。
+ * 生のクエリ文字列は含めない（個人情報・大量データ対策）。
  * @param {string} query - Overpass QLクエリ
- * @param {object} options - { endpoint, timeout, signal }
+ * @param {object} options - { endpoint, timeout(=totalTimeout), perAttemptTimeout, signal }
  * @returns {Promise<{results: Array, meta: object}>}
  */
 export async function executeOverpassQuery(query, options = {}) {
   const {
     endpoint = APP_CONFIG.overpassEndpoint,
-    timeout = APP_CONFIG.timeoutMs,
+    timeout,
+    totalTimeout = timeout ?? APP_CONFIG.totalTimeoutMs,
+    perAttemptTimeout = APP_CONFIG.perAttemptTimeoutMs,
     signal: externalSignal
   } = options
 
@@ -305,6 +319,7 @@ export async function executeOverpassQuery(query, options = {}) {
 
   const startedAt = Date.now()
   let lastError = null
+  const attempts = [] // (#56) 試行ごとの診断情報
 
   for (let i = 0; i < chain.length; i++) {
     const ep = chain[i]
@@ -322,19 +337,35 @@ export async function executeOverpassQuery(query, options = {}) {
     if (cached) {
       return {
         results: cached.data,
-        meta: { ...cached.meta, cached: true, endpoint: getEndpointLabel(ep) }
+        // i>0（前の候補が失敗して辿り着いた）場合はフォールバック発生として記録する
+        meta: { ...cached.meta, cached: true, fallback: i > 0, endpoint: getEndpointLabel(ep), attempts }
       }
     }
 
-    // キャンセルサポート＋タイムアウト（全体予算を共有: 前回の所要時間を差し引いて縮小）
+    // (#56) 試行予算 = min(単体試行上限, 全体予算の残り)
     const elapsed = Date.now() - startedAt
-    const attemptTimeout = Math.max(1, timeout - elapsed)
+    const attemptTimeout = Math.floor(Math.min(perAttemptTimeout, totalTimeout - elapsed))
+
+    // 残り予算がなければ試行せず、期限切れとして終了
+    if (attemptTimeout <= 0) {
+      const err = new OverpassError(
+        `時間予算を使い切りました（全体${totalTimeout}ms）`,
+        'timeout',
+        '検索範囲を狭めてから再試行してください。'
+      )
+      attempts.push({ endpoint: ep, outcome: 'skipped_budget', status: null, elapsedMs: 0 })
+      lastError = err
+      break
+    }
+
+    const attemptStartedAt = Date.now()
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), attemptTimeout)
 
-    // 外部シグナル連携
+    // (#56) 外部シグナル連携: 同一関数参照で登録・解除し、リスナーが残存しないようにする
+    const onExternalAbort = () => controller.abort()
     if (externalSignal) {
-      externalSignal.addEventListener('abort', () => controller.abort())
+      externalSignal.addEventListener('abort', onExternalAbort)
     }
 
     try {
@@ -346,7 +377,13 @@ export async function executeOverpassQuery(query, options = {}) {
         endpoint: getEndpointLabel(ep),
         elementCount: data.elements ? data.elements.length : 0,
         cached: false,
-        fallback: i > 0
+        fallback: i > 0,
+        attempts: attempts.concat({
+          endpoint: ep,
+          outcome: 'success',
+          status: 200,
+          elapsedMs: Date.now() - attemptStartedAt
+        })
       }
 
       // キャッシュに格納
@@ -359,8 +396,11 @@ export async function executeOverpassQuery(query, options = {}) {
 
       return { results, meta }
     } catch (error) {
+      const attemptElapsed = Date.now() - attemptStartedAt
+
       // 手動キャンセル（外部シグナル）→ キャンセルとして終了（フォールバックしない）
       if (error.name === 'AbortError' && externalSignal && externalSignal.aborted) {
+        attempts.push({ endpoint: ep, outcome: 'cancelled', status: null, elapsedMs: attemptElapsed })
         throw new OverpassError('検索がキャンセルされました', 'network', null)
       }
 
@@ -372,12 +412,18 @@ export async function executeOverpassQuery(query, options = {}) {
           '検索範囲を狭めて再試行してください。'
         )
         err.retryable = true
+        attempts.push({ endpoint: ep, outcome: 'timeout', status: null, elapsedMs: attemptElapsed })
         lastError = err
         continue
       }
 
       if (error instanceof OverpassError) {
-        if (!error.retryable) throw error // invalid_query など
+        if (!error.retryable) {
+          // invalid_query など: どのインスタンスでも同じ結果 → 即終了
+          attempts.push({ endpoint: ep, outcome: error.type, status: error.status || null, elapsedMs: attemptElapsed })
+          throw error
+        }
+        attempts.push({ endpoint: ep, outcome: error.type, status: error.status || null, elapsedMs: attemptElapsed })
         lastError = error
         continue
       }
@@ -389,21 +435,25 @@ export async function executeOverpassQuery(query, options = {}) {
         'ネットワーク接続を確認して再試行してください。'
       )
       err.retryable = true
+      attempts.push({ endpoint: ep, outcome: 'network', status: null, elapsedMs: attemptElapsed, message: error.message })
       lastError = err
     } finally {
       clearTimeout(timeoutId)
+      // (#56) 登録時に使用した同一関数参照で解除
       if (externalSignal) {
-        externalSignal.removeEventListener('abort', () => controller.abort())
+        externalSignal.removeEventListener('abort', onExternalAbort)
       }
     }
   }
 
-  // 全インスタンスが失敗
-  throw new OverpassError(
+  // 全インスタンスが失敗（#56: 試行内訳を診断可能にする）
+  const finalError = new OverpassError(
     `Overpass API の全インスタンスで失敗しました。最後のエラー: ${lastError ? lastError.message : '不明'}`,
     lastError ? lastError.type : 'network',
     '数分待ってから再試行してください。続く場合はネットワーク接続を確認してください。'
   )
+  finalError.attempts = attempts
+  throw finalError
 }
 
 /**
