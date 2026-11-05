@@ -10,10 +10,10 @@ import { CATEGORY_GROUPS, getCategoriesForPurpose } from '../../../data/categori
 // (#59) モバイルレイアウト E2E テスト
 //
 // - ビューポート幅による PC/モバイル レイアウト切替（matchMedia スタブで制御）
-// - モバイル4タブ（検索/一覧/地図/その他）の遷移と状態保持
-// - 検索タブからの地図モード検索 → クエリに地図BBOXが反映される
+// - モバイル3タブ（検索/一覧/その他）の遷移と状態保持（#60: 地図は検索タブ内に内蔵）
+// - 検索タブ内の地図モード検索 → クエリに地図BBOXが反映される
 // - 検索成功時の「一覧」タブ自動切替
-// - 地図タブの「この表示範囲で検索」明示トリガー（地図移動だけでは検索しない）
+// - 検索タブの「この表示範囲で検索」明示トリガー（地図移動だけでは検索しない）
 // - 施設カードタップ → 詳細ボトムシート → 「地図で見る」
 // - マーカータップ → 詳細ボトムシート
 // - 自治体モード検索
@@ -70,7 +70,7 @@ vi.mock('leaflet', () => {
       addLayer(l) { map.layers.push(l); return map },
       removeLayer() { return map },
       fitBounds() { return map },
-      panTo() { return map },
+      panTo(target) { map.panToCalls = map.panToCalls || []; map.panToCalls.push(target); return map },
       invalidateSize() { return map },
       latLngToContainerPoint: () => ({ x: 0, y: 0 }),
       getPixelBounds: () => ({}),
@@ -100,7 +100,7 @@ const MUNI_DATA = {
 }
 
 const OVERPASS_ELEMENTS = [
-  { type: 'node', id: 1001, lat: 34.85, lon: 135.5, tags: { name: 'テスト珈琲店', amenity: 'cafe', cuisine: 'coffee', 'addr:city': '大阪市', 'addr:suburb': '梅田', 'addr:street': '1-1', phone: '+81-6-1234-5678', website: 'https://example.com/coffee' } },
+  { type: 'node', id: 1001, lat: 34.85, lon: 135.5, tags: { name: 'テスト珈琲店', amenity: 'cafe', cuisine: 'coffee', 'addr:city': '大阪市', 'addr:suburb': '梅田', 'addr:street': '1-1', phone: '+81-6-1234-5678', website: 'https://example.com/coffee', wheelchair: 'yes', 'wheelchair:description:ja': '段差なし' } },
   { type: 'node', id: 1002, lat: 34.86, lon: 135.51, tags: { name: 'ラーメン屋テスト', amenity: 'restaurant', cuisine: 'ramen' } },
   { type: 'way', id: 2001, center: { lat: 34.87, lon: 135.52 }, tags: { name: 'テスト書店', shop: 'books' } },
 ]
@@ -245,12 +245,13 @@ describe('(#59) レイアウト切替（ビューポート幅ベース）', () =
     mediaMatches = true
     renderApp()
 
-    // 下部ナビが4タブで表示される
+    // 下部ナビが3タブで表示される（#60: 地図タブは廃止、地図は検索タブ内に内蔵）
     const nav = screen.getByRole('navigation', { name: 'モバイルナビゲーション' })
-    for (const label of ['検索', '一覧', '地図', 'その他']) {
+    for (const label of ['検索', '一覧', 'その他']) {
       expect(within(nav).getByRole('button', { name: label })).toBeTruthy()
     }
     expect(tabIsCurrent('検索')).toBe(true)
+    expect(within(nav).queryByRole('button', { name: '地図' })).toBeNull()
 
     // PCレイアウト固有の要素は存在しない
     expect(screen.queryByText('地図を隠す')).toBeNull()
@@ -296,8 +297,8 @@ describe('(#59) 検索タブ: 地図モード検索', () => {
     // カテゴリ=cafe を目的チップで選択（食べる → カフェ）
     expect(selectCategoryChip('カフェ')).toBe(true)
 
-    // フッター（スロールームの外）の「検索する」を押す
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    // フッター（スロールームの外）の「この表示範囲で検索」を押す
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     await waitFor(() => expect(overpassCalls).toHaveLength(1), { timeout: 8000 })
     // カテゴリフィルタと地図の現在表示範囲（モックBBOX）がクエリに含まれる
@@ -313,7 +314,7 @@ describe('(#59) 検索タブ: 地図モード検索', () => {
     renderApp()
 
     selectCategoryChip('カフェ')
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     await waitFor(() => {
       expect(tabIsCurrent('一覧')).toBe(true)
@@ -332,8 +333,8 @@ describe('(#59) 検索タブ: 地図モード検索', () => {
     const kwInput = screen.getByPlaceholderText('例: 珈琲、ラーメン')
     fireEvent.change(kwInput, { target: { value: 'テスト' } })
 
-    // 地図タブ→その他タブ→検索タブ と往復
-    clickTab('地図')
+    // 一覧タブ→その他タブ→検索タブ と往復
+    clickTab('一覧')
     clickTab('その他')
     clickTab('検索')
 
@@ -343,15 +344,12 @@ describe('(#59) 検索タブ: 地図モード検索', () => {
   }, IT_TIMEOUT)
 })
 
-describe('(#59) 地図タブ: 明示的な検索トリガー', () => {
+describe('(#59/#60) 検索タブ: 地図の明示的な検索トリガー', () => {
   it('「この表示範囲で検索」押下で地図BBOXを検索に使用する', async () => {
     renderApp()
 
     // 検索タブでカテゴリを設定（レストラン）
     selectCategoryChip('レストラン')
-
-    // 地図タブへ移動（この時点でOverpass呼び出しは起きていない）
-    clickTab('地図')
     expect(overpassCalls).toHaveLength(0)
 
     // 地図のmoveend（移動・拡大）だけでは検索が実行されない
@@ -378,12 +376,20 @@ describe('(#59) 地図タブ: 明示的な検索トリガー', () => {
     renderApp()
 
     selectCategoryChip('カフェ')
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
-    // 結果が地図タブのマーカーに反映されるまで待つ
+    // 検索成功後は一覧タブに自動切替される。検索タブに戻って地図のマーカーをタップ
+    await waitFor(() => {
+      expect(tabIsCurrent('一覧')).toBe(true)
+    }, { timeout: 8000 })
+    clickTab('検索')
+
+    // 結果が検索タブの地図マーカーに反映されるまで待つ
+    // （モックのremoveLayerはno-opのため再レンダリングで層が累積し得る → 「3件以上」で判定）
     await waitFor(() => {
       const map = getMapInstance()
-      expect(map.layers.filter((l) => l.kind === 'marker' && l.handlers.click)).toHaveLength(3)
+      const markers = map.layers.filter((l) => l.kind === 'marker' && l.handlers.click)
+      expect(markers.length).toBeGreaterThanOrEqual(3)
     }, { timeout: 8000 })
 
     // 最初のマーカー（テスト珈琲店）をタップ
@@ -402,7 +408,7 @@ describe('(#59) 施設カード→詳細ボトムシート→地図で見る', (
     renderApp()
 
     selectCategoryChip('カフェ')
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     // 一覧タブがアクティブになりカードが表示される
     await waitFor(() => {
@@ -421,13 +427,24 @@ describe('(#59) 施設カード→詳細ボトムシート→地図で見る', (
     expect(within(dialog).getByText(/大阪市 梅田 1-1/)).toBeTruthy()
     expect(within(dialog).getByText(/OSMで見る（node\/1001）/)).toBeTruthy()
     expect(within(dialog).getByText('cafe')).toBeTruthy()
+    // (#61) バリアフリー情報: 車椅子対応バッジ + :ja説明
+    expect(within(dialog).getByText(/バリアフリー情報/)).toBeTruthy()
+    expect(within(dialog).getByText('車椅子対応')).toBeTruthy()
+    // 説明はnoteとタグ一覧の両方に出る（≥1）
+    expect(within(dialog).getAllByText('段差なし').length).toBeGreaterThanOrEqual(1)
 
-    // 「地図で見る」: シートが閉じられ地図タブへ移動
+    // 「地図で見る」: シートが閉じられ検索タブ（地図モード）へ移動
     fireEvent.click(within(dialog).getByRole('button', { name: '地図で見る' }))
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull()
     }, { timeout: 3000 })
-    expect(tabIsCurrent('地図')).toBe(true)
+    expect(tabIsCurrent('検索')).toBe(true)
+
+    // (#60) activeResultId経由で地図が施設（テスト珈琲店 34.85,135.5）へパンする
+    const map0 = getMapInstance()
+    await waitFor(() => {
+      expect(map0.panToCalls.some((t) => Array.isArray(t) && t[0] === 34.85 && t[1] === 135.5)).toBe(true)
+    }, { timeout: 3000 })
 
     // 「閉じる」でシートが閉じられる（再オープンして確認）
     const map = getMapInstance()
@@ -443,8 +460,8 @@ describe('(#59) 施設カード→詳細ボトムシート→地図で見る', (
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull()
     }, { timeout: 3000 })
-    // 地図タブは維持される
-    expect(tabIsCurrent('地図')).toBe(true)
+    // 検索タブは維持される
+    expect(tabIsCurrent('検索')).toBe(true)
   }, IT_TIMEOUT)
 })
 
@@ -453,7 +470,7 @@ describe('(#59) 一覧タブ: クライアント側フィルタ', () => {
     renderApp()
 
     selectCategoryChip('カフェ')
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     await waitFor(() => {
       expect(tabIsCurrent('一覧')).toBe(true)
@@ -493,7 +510,7 @@ describe('(#59) 一覧タブ: クライアント側フィルタ', () => {
     })
 
     selectCategoryChip('カフェ')
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     // 0件ガイダンスが表示され、一覧タブに自動切替される
     await waitFor(() => {
@@ -506,11 +523,11 @@ describe('(#59) 一覧タブ: クライアント側フィルタ', () => {
 })
 
 describe('(#59) 自治体モード検索', () => {
-  it('「自治体で検索」→市区町村選択→検索: 自治体BBOXのPOIクエリが送出される', async () => {
+  it('「自治体から探す」→市区町村選択→検索: 自治体BBOXのPOIクエリが送出される', async () => {
     renderApp()
 
     // ソース切替（検索タブ内のタブボタン）
-    fireEvent.click(screen.getByRole('tab', { name: '自治体で検索' }))
+    fireEvent.click(screen.getByRole('tab', { name: '自治体から探す' }))
 
     // 大阪府→大阪市（都府県レベル）を選択（モバイルラベル）
     await selectMunicipality('大阪府', '大阪市（都府県）', 'どの県で探す？', 'どの市区町村で探す？')
@@ -571,7 +588,7 @@ describe('(#44) 目的チップとサンプル検索', () => {
     renderApp()
 
     // 自治体モードへ切替
-    fireEvent.click(screen.getByRole('tab', { name: '自治体で検索' }))
+    fireEvent.click(screen.getByRole('tab', { name: '自治体から探す' }))
     await waitFor(() => {
       expect(screen.getByText('どの県で探す？')).toBeTruthy()
     }, { timeout: 3000 })
@@ -592,7 +609,7 @@ describe('(#59) エラー表示の継続性', () => {
     renderApp()
 
     selectCategoryChip('カフェ')
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     // フォールバックチェーン（3エンドポイント）を順に試したあとエラーになる
     await waitFor(() => {

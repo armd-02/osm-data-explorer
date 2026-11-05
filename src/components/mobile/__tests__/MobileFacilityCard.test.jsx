@@ -96,6 +96,28 @@ describe('MobileFacilityCard（#44 生活者目線デザイン）', () => {
     fireEvent.click(screen.getByRole('button', { name: /テスト珈琲店/ }))
     expect(onOpen).toHaveBeenCalledWith(COFFEE)
   })
+
+  it('(#61) wheelchairが登録されていれば車椅子バッジを表示する', () => {
+    const r = {
+      type: 'node', id: 1, lat: 34.8, lon: 135.5,
+      tags: { name: 'テスト店舗', amenity: 'cafe', wheelchair: 'yes' }
+    }
+    render(<MobileFacilityCard result={r} onOpen={vi.fn()} />)
+    expect(screen.getByText('♿ 車椅子対応')).toBeTruthy()
+  })
+
+  it('(#61) wheelchair=limited / no でもそれぞれのラベルでバッジが出る', () => {
+    render(<MobileFacilityCard result={{ type: 'node', id: 2, tags: { amenity: 'cafe', wheelchair: 'limited' } }} onOpen={vi.fn()} />)
+    expect(screen.getByText('♿ 車椅子一部対応')).toBeTruthy()
+    cleanup()
+    render(<MobileFacilityCard result={{ type: 'node', id: 3, tags: { amenity: 'cafe', wheelchair: 'no' } }} onOpen={vi.fn()} />)
+    expect(screen.getByText('♿ 車椅子非対応')).toBeTruthy()
+  })
+
+  it('(#61) wheelchair未登録ならバッジは出ない', () => {
+    render(<MobileFacilityCard result={COFFEE} onOpen={vi.fn()} />)
+    expect(screen.queryByText(/♿/)).toBeNull()
+  })
 })
 
 describe('facilityTypeLabel（日本語施設タイプ）', () => {

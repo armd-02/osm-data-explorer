@@ -64,7 +64,7 @@ function EditPanel() {
 
       {!expanded ? (
         <p className="text-xs text-amber-700">
-          検索結果が見つかりません。OSMに未登録か、表記が異なる可能性があります。
+          検索結果が見つかりませんでした。OSMに未登録か、表記が異なる可能性があります。範囲を広げたり、カテゴリやキーワードを変えて再検索してください。
         </p>
       ) : (
         <div className="space-y-3">

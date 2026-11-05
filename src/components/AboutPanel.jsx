@@ -37,10 +37,14 @@ function AboutPanel() {
       <div className="flex-1 overflow-y-auto p-4 text-xs text-slate-700 space-y-3">
         {section === 'overview' && (
           <>
-            <h3 className="text-sm font-medium text-slate-800">OSM Data Explorerとは</h3>
+            <h3 className="text-sm font-medium text-slate-800">まちデータ帳とは</h3>
             <p>
-              OpenStreetMapのデータを、地図・日本語カテゴリ・店舗名から検索し、
-              一覧確認・集計・CSV/GeoJSONダウンロードができるWebツールです。
+              地図や自治体から、お店・施設の情報を探して保存できるWebツールです。
+              情報はOpenStreetMap（OSM）の登録データに基づきます。
+            </p>
+            <p>
+              「地図から探す」と「自治体から探す」の2つの入り口があり、
+              どちらでも検索から保存まで完結します。直观的方式を選んでください。
             </p>
             <p>
               OSMのタグ構造やOverpass QLの知識がなくても使えるように設計されています。

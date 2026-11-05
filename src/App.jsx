@@ -48,7 +48,8 @@ function App() {
         case 'SET_STATUS':
           return { ...state, status: action.payload }
         case 'SET_RESULTS':
-          return { ...state, results: action.payload }
+          // 新規検索時はアクティブ結果のハイライトをリセット（旧結果へのパンを防ぐ）
+          return { ...state, results: action.payload, activeResultId: null }
         case 'SET_FETCH_META':
           return { ...state, fetchMeta: action.payload }
         case 'SET_ERROR':
@@ -158,7 +159,7 @@ function App() {
         <div className="app-shell flex flex-col h-full min-h-0">
           {/* ===== Top Tab Bar ===== */}
           <nav className="flex items-center gap-1 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
-            <span className="text-sm font-semibold text-slate-800 mr-3">OSMデータ検索</span>
+            <span className="text-sm font-semibold text-slate-800 mr-3">まちデータ帳</span>
             {MAIN_TABS.map((tab) => (
               <button
                 key={tab.id}

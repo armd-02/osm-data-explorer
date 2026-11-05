@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { useApp } from '../context/AppContext'
 import { setMapInstance } from '../hooks/useMapRef'
 import MapToolbar from './MapToolbar'
+import { wheelchairBadge } from '../utils/accessibility'
 
 // Default center: Osaka, Japan
 const DEFAULT_CENTER = [34.6937, 135.5023]
@@ -37,6 +38,7 @@ function MapView({ onMarkerClick = null }) {
   const leafletRef = useRef(null)   // Leaflet Mapインスタンスref
   const bboxLayerRef = useRef(null)
   const markersRef = useRef([])
+  const highlightMarkerRef = useRef(null) // (#60) アクティブ結果のハイライトマーカー
   // (#41-1) 初回BBOX復元時のみfitBounds。URL復元がマウント後に発生しても対応。
   const hasFitInitialBboxRef = useRef(false)
   const { state, dispatch } = useApp()
@@ -133,6 +135,10 @@ function MapView({ onMarkerClick = null }) {
 
     markersRef.current.forEach((m) => map.removeLayer(m))
     markersRef.current = []
+    if (highlightMarkerRef.current) {
+      map.removeLayer(highlightMarkerRef.current)
+      highlightMarkerRef.current = null
+    }
 
     if (results.length > 0) {
       const visibleResults = results.length > MAX_MAP_MARKERS
@@ -155,8 +161,12 @@ function MapView({ onMarkerClick = null }) {
             const name = escapeHtml(result.name || '（名前のない要素）')
             const type = escapeHtml(result.type || 'node')
             const osmUrl = `https://www.openstreetmap.org/${result.type}/${result.id}`
+            const wc = wheelchairBadge(result.tags)
+            const wcRow = wc
+              ? `<div style="color:#047857;font-size:11px">♿ ${escapeHtml(wc.text)}</div>`
+              : ''
             const keyTags = Object.entries(result.tags || {})
-              .filter(([k]) => k !== 'name' && k !== 'name:ja')
+              .filter(([k]) => k !== 'name' && k !== 'name:ja' && k !== 'wheelchair')
               .slice(0, 3)
               .map(([k, v]) => `<div style="color:#555;font-size:11px">${escapeHtml(k)}: ${escapeHtml(v)}</div>`)
               .join('')
@@ -164,6 +174,7 @@ function MapView({ onMarkerClick = null }) {
               <div style="font-size: 12px; min-width: 160px; max-width: 220px;">
                 <strong>${name}</strong><br/>
                 <span style="color:#666">${type} / ID: ${result.id}</span><br/>
+                ${wcRow}
                 <a href="${osmUrl}" target="_blank" rel="noopener" style="color:#2563eb;font-size:11px">🔗 OSMで開く</a>
                 ${keyTags}
               </div>
@@ -173,8 +184,27 @@ function MapView({ onMarkerClick = null }) {
           markersRef.current.push(marker)
         }
       })
+
+      // (#60) アクティブ結果（「地図で見る」で選択した施設）のハイライトマーカー。
+      // 表示上限（500件）を超える位置の施設でもマーカーを表示して特定できるようにする
+      if (activeResultId) {
+        const active = results.find((r) => `${r.type}/${r.id}` === activeResultId)
+        const inSlice = active && visibleResults.includes(active)
+        if (active && active.lat != null && active.lon != null && !inSlice) {
+          const marker = L.marker([active.lat, active.lon], {
+            icon: L.divIcon({
+              html: `<div class="w-4 h-4 bg-amber-500 rounded-full border-2 border-white shadow" style="width:16px;height:16px;"></div>`,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            }),
+            zIndexOffset: 1000
+          }).addTo(map)
+          marker.bindTooltip(active.name || '選択中の施設')
+          highlightMarkerRef.current = marker
+        }
+      }
     }
-  }, [results, onMarkerClick])
+  }, [results, onMarkerClick, activeResultId])
 
   // Highlight active result — panToで移動（BBOXは変更しない）
   useEffect(() => {

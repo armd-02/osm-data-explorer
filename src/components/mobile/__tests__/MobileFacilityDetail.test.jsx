@@ -118,4 +118,76 @@ describe('MobileFacilityDetail', () => {
     fireEvent.click(backdrop)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('営業時間・メール・FAXは登録済みのみ表示される', () => {
+    renderDetail({
+      type: 'node', id: 7, lat: 34.8, lon: 135.5,
+      tags: {
+        amenity: 'pharmacy',
+        opening_hours: 'Mo-Fr 09:00-19:00; Sa 09:00-13:00',
+        'contact:email': 'shop@example.com',
+        'contact:fax': '+81-6-9999-8888'
+      }
+    })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Mo-Fr 09:00-19:00; Sa 09:00-13:00')).toBeTruthy()
+    const mail = within(dialog).getByRole('link', { name: /shop@example.com/ })
+    expect(mail.getAttribute('href')).toBe('mailto:shop@example.com')
+    expect(within(dialog).getByText(/FAX: \+81-6-9999-8888/)).toBeTruthy()
+  })
+})
+
+describe('MobileFacilityDetail: バリアフリー情報（#61）', () => {
+  it('wheelchair=yes なら「車椅子対応」バッジが表示される', () => {
+    renderDetail({
+      type: 'node', id: 5, lat: 34.8, lon: 135.5,
+      tags: { amenity: 'restaurant', wheelchair: 'yes' }
+    })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText(/バリアフリー情報/)).toBeTruthy()
+    expect(within(dialog).getByText('車椅子対応')).toBeTruthy()
+  })
+
+  it('wheelchair=limited + 説明（:ja優先）がnoteとして表示される', () => {
+    renderDetail({
+      type: 'node', id: 6, lat: 34.8, lon: 135.5,
+      tags: {
+        amenity: 'cinema',
+        wheelchair: 'limited',
+        'wheelchair:description': 'steps at main entrance',
+        'wheelchair:description:ja': '正面入口に段差あり（7cm未満）'
+      }
+    })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('車椅子一部対応')).toBeTruthy()
+    // 説明はバリアフリーセクションのnoteとタグ一覧の両方に出る（≥1）
+    expect(within(dialog).getAllByText('正面入口に段差あり（7cm未満）').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('トイレ・駐車・エレベーター等の複数項目が並ぶ', () => {
+    renderDetail({
+      type: 'way', id: 8, lat: 34.8, lon: 135.5,
+      tags: {
+        amenity: 'supermarket',
+        wheelchair: 'yes',
+        'toilets:wheelchair': 'no',
+        'capacity:disabled': '2',
+        elevator: 'yes', 'elevator:count': '1',
+        tactile_paving: 'yes'
+      }
+    })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('車椅子対応')).toBeTruthy()
+    expect(within(dialog).getByText('バリアフリートイレ')).toBeTruthy()
+    expect(within(dialog).getByText('なし')).toBeTruthy()
+    expect(within(dialog).getByText('2台')).toBeTruthy()
+    expect(within(dialog).getByText('エレベーター')).toBeTruthy()
+    expect(within(dialog).getByText('点字ブロック')).toBeTruthy()
+  })
+
+  it('バリアフリータグがなければセクション自体が表示されない', () => {
+    renderDetail()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).queryByText(/バリアフリー情報/)).toBeNull()
+  })
 })

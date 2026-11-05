@@ -5,7 +5,6 @@ import StatusBanner from '../StatusBanner'
 import MobileBottomNav from './MobileBottomNav'
 import MobileSearchTab from './MobileSearchTab'
 import MobileListTab from './MobileListTab'
-import MobileMapTab from './MobileMapTab'
 import MobileOtherTab from './MobileOtherTab'
 import MobileFacilityDetail from './MobileFacilityDetail'
 
@@ -14,16 +13,16 @@ import MobileFacilityDetail from './MobileFacilityDetail'
  *
  * - 上部: ヘッダー + StatusBanner（全タブで共通表示。
  *   エラーはタブを離れても画面に戻ってくる）
- * - 中央: 4タブ（検索/一覧/地図/その他）。非活性タブは hidden で
- *   アンマウントしないため、Leaflet マップインスタンス・検索条件・
- *   フィルタ状態がタブ切替をまたいで保持される
- * - 下部: 下部ナビゲーション（4タブ）
+ * - 中央: 3タブ（検索/一覧/その他）。非活性タブは hidden で
+ *   アンマウントしないため、検索条件・フィルタ状態がタブ切替をまたいで保持される。
+ *   (#60) Leaflet マップは検索タブ内に常設（地図モード時のみレンダリング）
+ * - 下部: 下部ナビゲーション（3タブ）
  * - 施設詳細: ボトムシート（オーバーレイ。主ナビのタブではない）
  *
  * 検索完了時は結果（一覧）タブへ、エラー時は検索タブへ自動切替する。
  */
 export default function MobileShell() {
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const [tab, setTab] = useState('search')
   const [detail, setDetail] = useState(null) // { result, origin }
 
@@ -36,38 +35,28 @@ export default function MobileShell() {
     setTab(state.status === 'success' ? 'list' : 'search')
   }, [state.status])
 
-  // 地図タブを開いたとき: 再描画 + 直近の検索BBOXにフィット
-  // （表示領域が0だったLeafletは invalidateSize が必要）
-  const lastFitBboxRef = useRef(null)
+  // 検索タブに戻ったとき: 地図の表示領域が0だったLeafletを invalidateSize で修正
+  // （検索タブは hidden のままアンマウントされないため、戻った瞬間にサイズが古い）
   useEffect(() => {
-    if (tab !== 'map') return
+    if (tab !== 'search') return
     const map = getMapInstance()
-    if (!map) return
-    if (typeof map.invalidateSize === 'function') map.invalidateSize()
-    const bbox = state.bbox
-    if (!bbox) return
-    const key = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`
-    if (key === lastFitBboxRef.current) return
-    if (typeof map.fitBounds !== 'function') return
-    map.fitBounds([[bbox.south, bbox.west], [bbox.north, bbox.east]], { padding: [20, 20] })
-    lastFitBboxRef.current = key
-  }, [tab, state.bbox])
+    if (map && typeof map.invalidateSize === 'function') map.invalidateSize()
+  }, [tab])
 
   const openDetail = (result, origin) => setDetail({ result, origin })
   const closeDetail = () => setDetail(null)
 
-  // 詳細シートから「地図で見る」: 地図タブへ移動し施設にパン
-  // （マップは hidden だがアンマウントしていないため常に操作可能）
+  // 詳細シートから「地図で見る」: 検索タブ（地図モード）へ移動し、
+  // activeResultId 経由で MapView が施設へパンする（地図マウント前に切替を
+  // 送っても、MapView側のeffectがマウント後に適用するため遅延処理不要）
   const showOnMap = (result) => {
     setDetail(null)
-    setTab('map')
-    if (result.lat == null || result.lon == null) return
-    const map = getMapInstance()
-    if (!map) return
-    if (typeof map.panTo === 'function') map.panTo([result.lat, result.lon])
-    if (typeof map.setZoom === 'function' && typeof map.getZoom === 'function' && map.getZoom() < 16) {
-      map.setZoom(16)
+    if (state.searchSource !== 'map') {
+      dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'map' })
     }
+    setTab('search')
+    if (result.lat == null || result.lon == null) return
+    dispatch({ type: 'SET_ACTIVE_RESULT', payload: `${result.type}/${result.id}` })
   }
 
   const selectTab = (id) => {
@@ -83,20 +72,20 @@ export default function MobileShell() {
   return (
     <div className="flex flex-col h-dvh bg-slate-50 text-slate-800">
       <header className="shrink-0 bg-white border-b border-slate-200 px-4 py-2.5">
-        <h1 className="text-sm font-semibold text-slate-800">OSMデータ検索</h1>
+        <h1 className="text-sm font-semibold text-slate-800">まちデータ帳</h1>
       </header>
 
       <StatusBanner onViewResults={() => setTab('list')} />
 
       <main className="flex-1 min-h-0 relative">
         <div className="absolute inset-0" {...panelProps('search')}>
-          <MobileSearchTab onViewResults={() => setTab('list')} />
+          <MobileSearchTab
+            onViewResults={() => setTab('list')}
+            onMarkerClick={(r) => openDetail(r, 'map')}
+          />
         </div>
         <div className="absolute inset-0" {...panelProps('list')}>
           <MobileListTab onOpenDetail={openDetail} />
-        </div>
-        <div className="absolute inset-0" {...panelProps('map')}>
-          <MobileMapTab onMarkerClick={(r) => openDetail(r, 'map')} />
         </div>
         <div className="absolute inset-0" {...panelProps('other')}>
           <MobileOtherTab />

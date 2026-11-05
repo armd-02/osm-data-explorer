@@ -9,6 +9,7 @@ import {
   OverpassError
 } from '../utils/overpass'
 import { checkBboxSize } from '../utils/geo'
+import { isValidBbox } from '../utils/searchBbox'
 
 /**
  * 検索実行のフック
@@ -46,7 +47,9 @@ export function useSearch() {
       ? (criteria && Object.keys(criteria).length > 0 ? criteria : stateRef.current.bbox)
       : (criteria ? criteria.bbox : null)
 
-    if (!bbox) {
+    // 縮退・逆順BBOX（Overpassが"bbox order must be [south, west, north, east]"
+    // で拒否する形状、例: 非表示地図コンテナからのgetBounds()）を検証する
+    if (!bbox || !isValidBbox(bbox)) {
       dispatch({ type: 'SET_STATUS', payload: 'error' })
       dispatch({
         type: 'SET_ERROR',

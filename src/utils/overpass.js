@@ -88,6 +88,22 @@ function buildCuisineAndFilters(category, cuisine) {
   return [`cuisine=${quoteValue(cuisine)}`]
 }
 
+/**
+ * (#44) カテゴリ未指定時のPOI対象フィルタ本体
+ *
+ * 一般向けの「すべて」は、お店・施設を示すPOIタグ（amenity/shop/tourism/leisure/
+ * office/healthcare/craft）に限定する。道路・建物等の全地物取得はAPI負荷と
+ * 結果上限に達する原因になるため、地図モード・自治体モードの両方で同じ
+ * POI意味に統一する。全地物取得は詳細検索で明示された場合のみ。
+ */
+const POI_KEYS = ['amenity', 'shop', 'tourism', 'leisure', 'office', 'healthcare', 'craft']
+
+function buildPoiBody(bboxStr) {
+  return POI_KEYS
+    .map((k) => `node[${k}](${bboxStr});\n  way[${k}](${bboxStr});`)
+    .join('\n  ')
+}
+
 export function buildSimpleQuery(bbox, category, keyword, cuisine = '') {
   const { south, west, north, east } = bbox
   const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
@@ -99,8 +115,8 @@ export function buildSimpleQuery(bbox, category, keyword, cuisine = '') {
   if (catFilter && (catFilter.unionFilters.length > 0 || (catFilter.andFilters && catFilter.andFilters.length > 0))) {
     body = buildFilterBody(bboxStr, catFilter, cuisineAnd)
   } else {
-    // カテゴリなし: 全要素
-    body = `  node(${bboxStr});\n  way(${bboxStr});\n  relation(${bboxStr});`
+    // (#44) カテゴリなし: POI対象タグに限定（道路・建物等の全地物取得はしない）
+    body = `  ${buildPoiBody(bboxStr)}`
   }
 
   const query = `[out:json][timeout:25];(\n${body}\n);\nout body center;\n`
@@ -124,9 +140,7 @@ export function buildPoiQuery(bbox, category, keyword, cuisine = '') {
     body = buildFilterBody(bboxStr, catFilter, cuisineAnd)
   } else {
     // (#44) カテゴリ未指定: POI対象タグに限定（道路・建物等を除外）
-    const poiKeys = ['amenity', 'shop', 'tourism', 'leisure', 'office', 'healthcare', 'craft']
-    const poiFilters = poiKeys.map(k => `node[${k}](${bboxStr});\n  way[${k}](${bboxStr});`)
-    body = poiFilters.join('\n  ')
+    body = `  ${buildPoiBody(bboxStr)}`
   }
 
   const query = `[out:json][timeout:25];(\n${body}\n);\nout body center;\n`

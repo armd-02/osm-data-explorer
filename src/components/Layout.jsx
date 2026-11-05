@@ -13,9 +13,9 @@ function Layout({ children }) {
             </svg>
           </div>
           <div>
-            <h1 className="text-base font-semibold text-slate-800">OSMデータ検索</h1>
+            <h1 className="text-base font-semibold text-slate-800">まちデータ帳</h1>
             <p className="text-xs text-slate-500 hidden sm:block">
-              OpenStreetMapのデータを検索・集計・ダウンロード
+              地図や自治体から、お店・施設の情報を探して保存
             </p>
           </div>
         </div>

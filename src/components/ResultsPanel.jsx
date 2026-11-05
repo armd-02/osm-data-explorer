@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { getGroupedCategories } from '../data/categories'
 import { applyResultFilters, hasActiveFilters } from '../utils/resultFilters'
 import { facilityName, facilityTypeLabel, formatAddress, safeWebsite } from '../utils/facilityLabels'
+import { wheelchairBadge } from '../utils/accessibility'
 
 /**
  * 検索結果一覧（PC）
@@ -117,20 +118,22 @@ function ResultsPanel() {
               <th className="px-2 py-2 text-left">タイプ</th>
               <th className="px-2 py-2 text-left">住所</th>
               <th className="px-2 py-2 text-left">電話</th>
+              <th className="px-2 py-2 text-left">バリアフリー</th>
               <th className="px-2 py-2 text-left">公式サイト</th>
             </tr>
           </thead>
           <tbody>
             {displayResults.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
                   {active
                     ? '条件に一致する施設はありません。フィルタを緩めてみてください。'
-                    : '結果がありません。条件を変更して再検索してください。'}
+                    : '結果が見つかりませんでした。範囲を広げたり、カテゴリやキーワードを変えて再検索してください。'}
                 </td>
               </tr>
             ) : displayResults.map((r, i) => {
               const website = safeWebsite(r.tags)
+              const badge = wheelchairBadge(r.tags)
               return (
                 <tr
                   key={`${r.type}-${r.id}`}
@@ -144,6 +147,13 @@ function ResultsPanel() {
                   </td>
                   <td className="px-2 py-2 text-slate-600 whitespace-nowrap">
                     {r.tags?.phone || r.tags?.['contact:phone'] || <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    {badge ? (
+                      <span className={`text-xs border rounded-full px-2 py-0.5 ${badge.cls}`}>♿ {badge.text}</span>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
                   </td>
                   <td className="px-2 py-2">
                     {website ? (

@@ -5,8 +5,8 @@ import { render, screen, fireEvent, within, cleanup } from '@testing-library/rea
 import MobileBottomNav, { MOBILE_TABS } from '../MobileBottomNav'
 
 /**
- * (#59) モバイル下部ナビゲーション
- * - 4タブ（検索/一覧/地図/その他）
+ * (#59/#60) モバイル下部ナビゲーション
+ * - 3タブ（検索/一覧/その他。地図は検索タブ内に内蔵 #60）
  * - アクティブタブに aria-current="page"
  * - クリックで onSelect(id)
  * - タップターゲット44px以上（min-h-[56px]）
@@ -16,10 +16,11 @@ import MobileBottomNav, { MOBILE_TABS } from '../MobileBottomNav'
 afterEach(() => cleanup())
 
 describe('MobileBottomNav', () => {
-  it('検索/一覧/地図/その他の4タブが並んでいる', () => {
+  it('検索/一覧/その他の3タブが並んでいる', () => {
     render(<MobileBottomNav active="search" onSelect={vi.fn()} />)
     const nav = screen.getByRole('navigation', { name: 'モバイルナビゲーション' })
-    expect(MOBILE_TABS).toHaveLength(4)
+    expect(MOBILE_TABS).toHaveLength(3)
+    expect(MOBILE_TABS.map((t) => t.id)).toEqual(['search', 'list', 'other'])
     for (const { label } of MOBILE_TABS) {
       expect(within(nav).getByRole('button', { name: label })).toBeTruthy()
     }
@@ -34,8 +35,8 @@ describe('MobileBottomNav', () => {
   it('クリックで対応タブのonSelectが呼ばれる', () => {
     const onSelect = vi.fn()
     render(<MobileBottomNav active="search" onSelect={onSelect} />)
-    fireEvent.click(screen.getByRole('button', { name: '地図' }))
-    expect(onSelect).toHaveBeenCalledWith('map')
+    fireEvent.click(screen.getByRole('button', { name: 'その他' }))
+    expect(onSelect).toHaveBeenCalledWith('other')
   })
 
   it('タップターゲット44px以上・safe-area対応', () => {
