@@ -108,14 +108,64 @@ export const CATEGORIES = [
     description: '公園・遊具・庭園・広場'
   },
   {
+    // (#44) 教育施設カテゴリ: 幼稚園・小学校・大学/短大・予備校を個別カテゴリ化
+    // 根拠: 日本OSMデータでは amenity=* と education=*（2025年に承認された推奨キー）が
+    // 併記される。実データ（東京圏）では education=prep_school が365件存在するなど、
+    // 両キーを併用して取得率を確保する。
+    id: 'kindergarten',
+    label: '幼稚園',
+    tags: [
+      { key: 'amenity', values: ['kindergarten'] },
+      { key: 'education', values: ['kindergarten'] },
+      { key: 'school', values: ['kindergarten'] }
+    ],
+    logic: 'or',
+    description: '幼稚園（public・private）'
+  },
+  {
+    id: 'primary_school',
+    label: '小学校',
+    tags: [
+      { key: 'school', values: ['primary'] },
+      { key: 'amenity', values: ['primary_school'] },
+      { key: 'education', values: ['primary_school'] }
+    ],
+    logic: 'or',
+    description: 'school=primary等でタグ付けされた小学校（※OSMでは多くの小学校がschool=primary未タグ付けのため、件数が実際の数より少なくなる場合があります）'
+  },
+  {
+    id: 'university',
+    label: '大学・短大',
+    tags: [
+      { key: 'amenity', values: ['university', 'college'] },
+      { key: 'education', values: ['university', 'college'] },
+      { key: 'university', values: ['yes', 'faculty'] }
+    ],
+    logic: 'or',
+    description: '大学・短期大学・学部・学群'
+  },
+  {
+    id: 'prep_school',
+    label: '予備校・塾',
+    tags: [
+      { key: 'amenity', values: ['prep_school', 'language_school'] },
+      { key: 'education', values: ['prep_school', 'language_school'] },
+      { key: 'office', values: ['educational_institution'] }
+    ],
+    logic: 'or',
+    description: '進学予備校・塾・語学学校'
+  },
+  {
     id: 'school',
     label: '学校・教育施設',
     tags: [
-      { key: 'amenity', values: ['school', 'kindergarten', 'university', 'college', 'language_school'] },
+      { key: 'amenity', values: ['school'] },
+      { key: 'education', values: ['school'] },
+      { key: 'school', values: ['middle', 'high', 'yes'] },
       { key: 'leisure', values: ['common'] }
     ],
     logic: 'or',
-    description: '幼稚園・小学校・中学校・高校・大学'
+    description: '中学校・高校・その他学校（幼稚園・大学等は個別カテゴリ参照）'
   },
   {
     id: 'transport',
@@ -216,7 +266,7 @@ export const CATEGORY_GROUPS = [
   { name: '買う', icon: '🛍️', ids: ['retail', 'convenience'] },
   { name: '遊ぶ', icon: '🎠', ids: ['park', 'sports', 'museum', 'worship', 'accommodation'] },
   { name: '暮らす', icon: '🏠', ids: ['public_facility', 'hospital', 'pharmacy', 'bank', 'toilets'] },
-  { name: '学ぶ', icon: '📚', ids: ['school'] },
+  { name: '学ぶ', icon: '📚', ids: ['kindergarten', 'primary_school', 'university', 'prep_school', 'school'] },
   { name: 'その他', icon: '🧭', ids: ['transport'] }
 ]
 

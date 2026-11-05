@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { buildSimpleQuery, buildAdvancedQuery } from '../overpass'
-import { CATEGORIES, categoryToQueryFilter } from '../../data/categories'
+import { CATEGORIES, categoryToQueryFilter, getCategoriesForPurpose, getPurposeUnionFilters } from '../../data/categories'
 
 const BBOX = { south: 35.0, west: 139.0, north: 35.1, east: 139.1 }
 const BBOX_STR = '35.000000,139.000000,35.100000,139.100000'
@@ -219,5 +219,72 @@ describe('categoryToQueryFilter', () => {
         }
       }
     }
+  })
+})
+
+describe('categoryToQueryFilter — 教育施設サブカテゴリ (#44)', () => {
+  const filterOf = (id) => categoryToQueryFilter(CATEGORIES.find(c => c.id === id))
+
+  it('幼稚園: amenity/education/school の kindergarten を union 化', () => {
+    const r = filterOf('kindergarten')
+    expect(r.unionFilters.sort()).toEqual([
+      'amenity=kindergarten',
+      'education=kindergarten',
+      'school=kindergarten'
+    ])
+    expect(r.andFilters).toHaveLength(0)
+  })
+
+  it('小学校: school=primary 等の厳密条件のみ', () => {
+    const r = filterOf('primary_school')
+    expect(r.unionFilters.sort()).toEqual([
+      'amenity=primary_school',
+      'education=primary_school',
+      'school=primary'
+    ])
+  })
+
+  it('大学・短大: amenity/education の複数値が正規表現にまとまる', () => {
+    const r = filterOf('university')
+    expect(r.unionFilters).toContain('amenity~"^(university|college)$"')
+    expect(r.unionFilters).toContain('education~"^(university|college)$"')
+    expect(r.unionFilters).toContain('university~"^(yes|faculty)$"')
+    expect(r.unionFilters).toHaveLength(3)
+  })
+
+  it('予備校・塾: prep_school・language_school・office=educational_institution', () => {
+    const r = filterOf('prep_school')
+    expect(r.unionFilters).toContain('amenity~"^(prep_school|language_school)$"')
+    expect(r.unionFilters).toContain('education~"^(prep_school|language_school)$"')
+    expect(r.unionFilters).toContain('office=educational_institution')
+    expect(r.unionFilters).toHaveLength(3)
+  })
+
+  it('学校・教育施設（汎用）: 幼稚園・大学等の条件を含まない', () => {
+    const r = filterOf('school')
+    expect(r.unionFilters.sort()).toEqual([
+      'amenity=school',
+      'education=school',
+      'leisure=common',
+      'school~"^(middle|high|yes)$"'
+    ])
+    for (const f of r.unionFilters) {
+      expect(f).not.toContain('kindergarten')
+      expect(f).not.toContain('university')
+      expect(f).not.toContain('prep_school')
+    }
+  })
+
+  it('学ぶ目的のunionに全5カテゴリの条件が重複除去されて含まれる', () => {
+    const cats = getCategoriesForPurpose('学ぶ')
+    expect(cats).toHaveLength(5)
+    const filters = getPurposeUnionFilters('学ぶ')
+    expect(filters).toContain('amenity=kindergarten')
+    expect(filters).toContain('school=primary')
+    expect(filters).toContain('amenity~"^(university|college)$"')
+    expect(filters).toContain('amenity~"^(prep_school|language_school)$"')
+    expect(filters).toContain('amenity=school')
+    // 重複除去: amenity=school は1回のみ
+    expect(filters.filter((f) => f === 'amenity=school')).toHaveLength(1)
   })
 })

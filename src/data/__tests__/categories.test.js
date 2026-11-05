@@ -14,12 +14,29 @@ import {
 } from '../../data/categories'
 
 describe('カテゴリの目的ベースグループ化（#44 生活者目線UI）', () => {
-  it('6つの目的グループ（食べる・買う・遊ぶ・暮らす・学ぶ・その他）を返し、計19カテゴリを含む', () => {
+  it('6つの目的グループ（食べる・買う・遊ぶ・暮らす・学ぶ・その他）を返し、計23カテゴリを含む', () => {
     const grouped = getGroupedCategories()
     expect(grouped.length).toBe(6)
     expect(grouped.map((g) => g.group)).toEqual(['食べる', '買う', '遊ぶ', '暮らす', '学ぶ', 'その他'])
     const total = grouped.reduce((n, g) => n + g.categories.length, 0)
-    expect(total).toBe(19)
+    expect(total).toBe(23)
+  })
+
+  it('(#44) 学ぶグループに教育施設のサブカテゴリ（幼稚園・小学校・大学・予備校・学校）を含む', () => {
+    const grouped = getGroupedCategories()
+    const learn = grouped.find((g) => g.group === '学ぶ')
+    expect(learn).toBeTruthy()
+    expect(learn.categories.map((c) => c.id)).toEqual([
+      'kindergarten', 'primary_school', 'university', 'prep_school', 'school'
+    ])
+    const labels = learn.categories.map((c) => c.label)
+    expect(labels).toContain('幼稚園')
+    expect(labels).toContain('小学校')
+    expect(labels).toContain('大学・短大')
+    expect(labels).toContain('予備校・塾')
+    for (const c of learn.categories) {
+      expect(getCategoryById(c.id)).toBeTruthy()
+    }
   })
 
   it('グループ間・グループ内でIDが重複しておらず、すべてCATEGORIESに存在する', () => {
@@ -100,6 +117,10 @@ describe('カテゴリの目的ベースグループ化（#44 生活者目線UI�
     expect(getPurposeOfCategory('park')).toBe('遊ぶ')
     expect(getPurposeOfCategory('hospital')).toBe('暮らす')
     expect(getPurposeOfCategory('school')).toBe('学ぶ')
+    expect(getPurposeOfCategory('kindergarten')).toBe('学ぶ')
+    expect(getPurposeOfCategory('primary_school')).toBe('学ぶ')
+    expect(getPurposeOfCategory('university')).toBe('学ぶ')
+    expect(getPurposeOfCategory('prep_school')).toBe('学ぶ')
     expect(getPurposeOfCategory('transport')).toBe('その他')
     expect(getPurposeOfCategory('ramen')).toBeNull()
   })
