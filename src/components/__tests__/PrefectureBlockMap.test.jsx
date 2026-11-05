@@ -15,6 +15,20 @@ describe('都道府県ブロック図による選択', () => {
     expect(codes).toEqual(Array.from({ length: 47 }, (_, i) => String(i + 1).padStart(2, '0')))
   })
 
+  it('スマホ想定の初期状態では日本全体を表示し、必要なら拡大・縮小できる', () => {
+    const { container } = render(<PrefectureBlockMap availableCodes={codes} onSelect={() => {}} />)
+    const svg = container.querySelector('svg')
+    expect(svg.classList.contains('w-full')).toBe(true)
+    const zoomButton = screen.getByRole('button', { name: '拡大して選ぶ' })
+    expect(zoomButton.getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(zoomButton)
+    expect(svg.classList.contains('w-[680px]')).toBe(true)
+    expect(screen.getByRole('button', { name: '日本全体を見る' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: '日本全体を見る' }))
+    expect(svg.classList.contains('w-full')).toBe(true)
+  })
+
   it('大阪府のクリックで既存自治体データと同じ都道府県コード27を渡す', () => {
     const onSelect = vi.fn()
     render(<PrefectureBlockMap selectedCode="" availableCodes={codes} onSelect={onSelect} />)
