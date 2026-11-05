@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import { getGroupedCategories } from '../../data/categories'
 import { applyResultFilters, hasActiveFilters } from '../../utils/resultFilters'
+import { activeSearchOf } from '../../state/appReducer'
 import EditPanel from '../EditPanel'
 import ExportBar from '../ExportBar'
 import MobileFacilityCard from './MobileFacilityCard'
@@ -22,8 +23,15 @@ const GROUPS = getGroupedCategories()
 
 export default function MobileListTab({ onOpenDetail }) {
   const { state, dispatch } = useApp()
-  const { results, status, resultFilters } = state
-  const { nameFilter, catFilter, websiteOnly, sortDir } = resultFilters
+  const { results, status, resultFilters, searchSource } = state
+  const { nameFilter, websiteOnly, sortDir } = resultFilters
+
+  // (#44) カテゴリ選択は検索フォームと一覧フィルタを同じ値として扱う。
+  // ドロップダウンの操作は検索フォームのcategoryにdispatchし、
+  // reducerが resultFilters.catFilter をミラーする（データ取得後なら即絞り込み）。
+  const activeSearch = activeSearchOf(state) || {}
+  const searchFormType = searchSource === 'municipality' ? 'SET_MUNICIPALITY_SEARCH' : 'SET_SIMPLE_SEARCH'
+  const changeCategory = (value) => dispatch({ type: searchFormType, payload: { category: value } })
 
   const setFilters = (patch) => dispatch({ type: 'SET_RESULT_FILTERS', payload: patch })
 
@@ -33,11 +41,17 @@ export default function MobileListTab({ onOpenDetail }) {
     [results, resultFilters]
   )
   const filtersActive = hasActiveFilters(resultFilters)
+  // 「フィルタ適用中」マーカーはフィルタが実際に件数を減らしているときだけ出す
+  // （検索時にカテゴリを選択済みの場合は結果が既に絞り込まれているため不要）
+  const narrowing = filtersActive && filtered.length < (results || []).length
 
   const hasResults = status === 'success' && (results || []).length > 0
   const visible = filtered.slice(0, MAX_CARDS)
-  const resetFilters = () =>
-    setFilters({ nameFilter: '', typeFilter: 'all', catFilter: '', websiteOnly: false, sortDir: 'none' })
+  const resetFilters = () => {
+    // 検索フォームのカテゴリ・目的選択も一緒に解除する（状態の整合性）
+    dispatch({ type: searchFormType, payload: { category: '', purpose: '' } })
+    setFilters({ nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none' })
+  }
 
   return (
     <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
@@ -53,7 +67,7 @@ export default function MobileListTab({ onOpenDetail }) {
         <>
           <p className="text-xs text-slate-600">
             {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
-            {filtersActive ? '（フィルタ適用中）' : ''}
+            {narrowing ? '（フィルタ適用中）' : ''}
           </p>
 
           {/* フィルタバー */}
@@ -68,8 +82,8 @@ export default function MobileListTab({ onOpenDetail }) {
             />
             <div className="flex gap-2">
               <select
-                value={catFilter}
-                onChange={(e) => setFilters({ catFilter: e.target.value })}
+                value={activeSearch.category || ''}
+                onChange={(e) => changeCategory(e.target.value)}
                 aria-label="カテゴリで絞り込む"
                 className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >

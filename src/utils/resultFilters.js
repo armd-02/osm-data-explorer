@@ -11,11 +11,17 @@
  *   - nameFilter:   施設名の部分一致（name / name:ja、大文字小文字無視）
  *   - typeFilter:   OSM要素種別（all | node | way | relation）
  *   - catFilter:    施設カテゴリID（categoryMatchesElement で判定）
+ *   - purposeFilter: 目的名（その目的に属するカテゴリのいずれかに一致するものだけ）
  *   - websiteOnly:  公式サイトが登録されているものだけ
  *   - sortDir:      施設名で並び替え（none | asc | desc）
+ *
+ * (#44) catFilter / purposeFilter は検索フォームのカテゴリ・目的選択のミラー
+ * として reducer（appReducer.js）が同期する。カテゴリが設定されている間は
+ * purposeFilter は空になる（カテゴリ > 目的 の優先度）。
  */
 import { categoryMatchesElement } from './categoryMatch'
 import { facilityName } from './facilityLabels'
+import { getCategoriesForPurpose } from '../data/categories'
 
 /**
  * アクティブなフィルタが1つでも存在するか
@@ -26,6 +32,7 @@ export function hasActiveFilters(filters) {
     (f.nameFilter || '').trim() ||
     (f.typeFilter && f.typeFilter !== 'all') ||
     (f.catFilter || '') ||
+    (f.purposeFilter || '') ||
     f.websiteOnly ||
     (f.sortDir && f.sortDir !== 'none')
   )
@@ -55,6 +62,14 @@ export function applyResultFilters(results, filters) {
 
   if (f.catFilter) {
     out = out.filter((r) => categoryMatchesElement(f.catFilter, r))
+  }
+
+  if (f.purposeFilter) {
+    // 目的スコープ: その目的グループのカテゴリのいずれかに一致すれば残す（OR union）
+    const cats = getCategoriesForPurpose(f.purposeFilter) || []
+    if (cats.length > 0) {
+      out = out.filter((r) => cats.some((c) => categoryMatchesElement(c.id, r)))
+    }
   }
 
   if (f.websiteOnly) {

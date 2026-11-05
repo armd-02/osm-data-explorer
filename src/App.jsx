@@ -19,6 +19,7 @@ import SearchActionButton from './components/SearchActionButton'
 import { useIsMobile } from './hooks/useIsMobile'
 import MobileShell from './components/mobile/MobileShell'
 import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
+import { appReducer, createInitialState } from './state/appReducer'
 
 // メインタブ定義
 const MAIN_TABS = [
@@ -34,94 +35,7 @@ function App() {
   const [searchCollapsed, setSearchCollapsed] = useState(false)
   // (#59) モバイル幅（<1024px）ではモバイル専用レイアウト（下部ナビ4タブ）
   const isMobile = useIsMobile()
-  const [state, dispatch] = React.useReducer(
-    (state, action) => {
-      switch (action.type) {
-        case 'SET_SEARCH_MODE':
-          return { ...state, searchMode: action.payload }
-        case 'SET_SIMPLE_SEARCH':
-          return { ...state, simpleSearch: { ...state.simpleSearch, ...action.payload } }
-        case 'SET_ADVANCED_SEARCH':
-          return { ...state, advancedSearch: { ...state.advancedSearch, ...action.payload } }
-        case 'SET_BBOX':
-          return { ...state, bbox: action.payload }
-        case 'SET_STATUS':
-          return { ...state, status: action.payload }
-        case 'SET_RESULTS':
-          // 新規検索時はアクティブ結果のハイライトをリセット（旧結果へのパンを防ぐ）
-          return { ...state, results: action.payload, activeResultId: null }
-        case 'SET_FETCH_META':
-          return { ...state, fetchMeta: action.payload }
-        case 'SET_ERROR':
-          return { ...state, error: action.payload, errorType: action.errorType || null, errorSuggestion: action.errorSuggestion || null }
-        case 'CLEAR_RESULTS':
-          return { ...state, results: [], error: null, errorType: null, errorSuggestion: null, status: 'idle', fetchMeta: null }
-        case 'SET_ACTIVE_RESULT':
-          return { ...state, activeResultId: action.payload }
-        case 'SET_SEARCH_SOURCE': {
-          // (#49 改訂) モード切替時のカテゴリ・キーワード引き継ぎ（last-wins）
-          // 切り元の値を切り先に**常に**引き継ぐ。両モードのカテゴリは共有の
-          // 単一値として振る舞い、「カテゴリを変えたのにモード切替で古い値に
-          // 戻る（カテゴリが変わってない）」問題を解消する。
-          const src = action.payload
-          const ms = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
-          const ss = state.simpleSearch || { category: '', keyword: '', location: '', cuisine: '', purpose: '' }
-          if (src === 'municipality') {
-            return {
-              ...state,
-              searchSource: src,
-              municipalitySearch: {
-                ...ms,
-                category: ss.category,
-                keyword: ss.keyword,
-                cuisine: ss.cuisine,
-                purpose: ss.purpose || ''
-              }
-            }
-          }
-          if (src === 'map') {
-            return {
-              ...state,
-              searchSource: src,
-              simpleSearch: {
-                ...ss,
-                category: ms.category,
-                keyword: ms.keyword,
-                cuisine: ms.cuisine,
-                purpose: ms.purpose || ''
-              }
-            }
-          }
-          return { ...state, searchSource: src }
-        }
-        case 'SET_MUNICIPALITY':
-          return { ...state, selectedMunicipality: action.payload }
-        case 'SET_MUNICIPALITY_SEARCH':
-          return { ...state, municipalitySearch: { ...state.municipalitySearch, ...action.payload } }
-        case 'SET_RESULT_FILTERS':
-          return { ...state, resultFilters: { ...state.resultFilters, ...action.payload } }
-        default:
-          return state
-      }
-    },
-    {
-      searchMode: 'simple',
-      simpleSearch: { category: '', keyword: '', location: '', cuisine: '', purpose: '' },
-      advancedSearch: { tags: [], keyword: '', useAnd: true },
-      bbox: null,
-      status: 'idle',
-      results: [],
-      error: null,
-      errorType: null,
-      errorSuggestion: null,
-      fetchMeta: null,
-      activeResultId: null,
-      searchSource: 'map',
-      selectedMunicipality: null,
-      municipalitySearch: { category: '', keyword: '', cuisine: '', purpose: '' },
-      resultFilters: { nameFilter: '', typeFilter: 'all', catFilter: '', websiteOnly: false, sortDir: 'none' }
-    }
-  )
+  const [state, dispatch] = React.useReducer(appReducer, createInitialState())
 
   // URLから状態を復元
   const restoredRef = useRef(false)
