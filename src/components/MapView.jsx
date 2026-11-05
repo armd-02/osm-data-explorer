@@ -73,7 +73,30 @@ function MapView({ onMarkerClick = null }) {
 
     // (#29) 地図のmoveend/zoomendでBBOXを更新しない
 
+    // (#41-3/#60) コンテナのsize変化（タブのhidden↔表示切替など）で
+    // invalidateSize()。display:none→表示復帰時、sizeが0だったコンテナに
+    // タイル再読み込みが走らず古いタイルのままであるのを防ぐ。
+    let roTimer = null
+    const ro = new ResizeObserver(() => {
+      if (roTimer) clearTimeout(roTimer)
+      roTimer = setTimeout(() => {
+        const el = mapRef.current
+        if (!el || !leafletRef.current) return
+        const r = el.getBoundingClientRect()
+        if (r.width > 0 && r.height > 0) {
+          const m = leafletRef.current
+          m.invalidateSize()
+          // LeafletのTileLayerは'moveend'で更新する（'resize'では更新しない）ため、
+          // size復帰後にmoveendを明示的に発火し、タイルの再読み込みをトリガーする
+          m.fire('moveend')
+        }
+      }, 100)
+    })
+    ro.observe(mapRef.current)
+
     return () => {
+      ro.disconnect()
+      if (roTimer) clearTimeout(roTimer)
       map.remove()
       leafletRef.current = null
       setMapInstance(null)
