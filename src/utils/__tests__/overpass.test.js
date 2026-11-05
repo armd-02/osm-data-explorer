@@ -267,10 +267,11 @@ describe('cuisineフィルタ（#54: 施設の種類と料理の分離）', () =
     expect(query).toContain('[amenity=restaurant][cuisine=udon](')
   })
 
-  it('カテゴリ未指定時はcuisineを無視する（全要素取得を維持）', () => {
+  it('カテゴリ未指定時はcuisineを無視し、POI対象に限定する（#44）', () => {
     const { query } = buildSimpleQuery(TEST_BBOX, '', '', 'ramen')
     expect(query).not.toContain('cuisine')
-    expect(query).toContain('node(34.000000,135.000000,34.100000,135.200000)')
+    expect(query).toContain('[amenity](34.000000,135.000000,34.100000,135.200000)')
+    expect(query).not.toContain('node(34.000000,135.000000,34.100000,135.200000)')
   })
 
   it('非飲食カテゴリ（薬局）+ cuisine: 無視される（cuisineは飲食カテゴリのみ）', () => {

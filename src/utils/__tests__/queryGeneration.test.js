@@ -33,11 +33,13 @@ function assertValidOverpassQL(query) {
 }
 
 describe('buildSimpleQuery', () => {
-  it('カテゴリ指定なし: 全要素クエリ', () => {
+  it('カテゴリ指定なし: POI対象タグに限定（#44: 道路・建物等の全地物取得をしない）', () => {
     const { query } = buildSimpleQuery(BBOX, '', '')
-    expect(query).toContain(`node(${BBOX_STR})`)
-    expect(query).toContain(`way(${BBOX_STR})`)
-    expect(query).toContain(`relation(${BBOX_STR})`)
+    expect(query).toContain(`node[amenity](${BBOX_STR});`)
+    expect(query).toContain(`way[shop](${BBOX_STR});`)
+    expect(query).toContain(`way[healthcare](${BBOX_STR});`)
+    expect(query).not.toContain(`node(${BBOX_STR})`)
+    expect(query).not.toContain(`relation[amenity]`)
     expect(query).toContain('[out:json][timeout:25]')
     assertValidOverpassQL(query)
   })
@@ -72,9 +74,10 @@ describe('buildSimpleQuery', () => {
   it('(#54) 旧ラーメンカテゴリIDは未知カテゴリとして扱い、cuisineフィルタと併せて無視される', () => {
     // 旧URL c=ramen は urlState 層で restaurant+cu=ramen にマッピングされる。
     // 万一 'ramen' が直接渡されても（未知ID）、クエリ生成は安全に退化する。
+    // (#44) カテゴリ未指定と同様にPOI対象に限定される。
     const { query } = buildSimpleQuery(BBOX, 'ramen', '', 'ramen')
     expect(query).not.toContain('cuisine')
-    expect(query).toContain(`node(${BBOX_STR});`)
+    expect(query).toContain(`node[amenity](${BBOX_STR});`)
     assertValidOverpassQL(query)
   })
 })

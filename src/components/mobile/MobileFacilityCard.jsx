@@ -5,6 +5,7 @@ import {
   safeWebsite,
   facilityTypeLabel
 } from '../../utils/facilityLabels'
+import { wheelchairBadge } from '../../utils/accessibility'
 
 // テスト・他コンポーネントの互換のために再エクスポート
 export { facilityName, formatAddress, safeWebsite }
@@ -29,6 +30,7 @@ export default function MobileFacilityCard({ result, onOpen }) {
   const phone = tags.phone || tags['contact:phone'] || ''
   const website = safeWebsite(tags)
   const openingHours = tags.opening_hours || ''
+  const wcBadge = wheelchairBadge(tags)
 
   return (
     <button
@@ -45,6 +47,11 @@ export default function MobileFacilityCard({ result, onOpen }) {
 
       {address && <p className="text-xs text-slate-600">📍 {address}</p>}
       {phone && <p className="text-xs text-slate-600">📞 {phone}</p>}
+      {wcBadge && (
+        <p className={`text-[11px] border rounded-md px-2 py-0.5 inline-block ${wcBadge.cls}`}>
+          ♿ {wcBadge.text}
+        </p>
+      )}
       {openingHours && <p className="text-xs text-slate-600">🕐 {openingHours}</p>}
       {website && (
         <p className="text-xs text-primary-600">🌐 公式サイト（詳細で開けます）</p>

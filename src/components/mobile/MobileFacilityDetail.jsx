@@ -1,10 +1,12 @@
 import React from 'react'
 import { facilityName, formatAddress, safeWebsite } from '../../utils/facilityLabels'
+import { parseAccessibility } from '../../utils/accessibility'
 
 /**
- * (#59) 施設詳細ボトムシート
+ * (#59 / #61) 施設詳細ボトムシート
  *
- * 主情報: 名前・住所・電話・Webサイト（OSMに登録済みの情報のみ表示）
+ * 主情報: 名前・住所・電話・Webサイト・営業時間（OSMに登録済みの情報のみ表示）
+ * (#61) バリアフリー情報: 車椅子・トイレ・駐車・エレベーター等を日本語解釈して表示
  * 補助情報: OSM ID・座標・タグ一覧（折りたたみ）
  * 主ナビゲーションのタブではなく、施設カード／地図マーカーから開くオーバーレイ。
  */
@@ -13,8 +15,12 @@ export default function MobileFacilityDetail({ detail, onClose, onShowOnMap }) {
   const tags = result.tags || {}
   const name = facilityName(result)
   const address = formatAddress(tags)
-  const phone = tags.phone
+  const phone = tags.phone || tags['contact:phone']
   const website = safeWebsite(tags)
+  const email = tags['contact:email'] || tags.email || ''
+  const fax = tags['contact:fax'] || tags.fax || ''
+  const openingHours = tags.opening_hours || ''
+  const accessItems = parseAccessibility(tags)
   const tagEntries = Object.entries(tags)
   const hasCoords = result.lat != null && result.lon != null
 
@@ -50,10 +56,39 @@ export default function MobileFacilityDetail({ detail, onClose, onShowOnMap }) {
               🔗 Webサイト
             </a>
           )}
-          {!address && !phone && !website && (
+          {openingHours && <p className="text-xs text-slate-600 break-words">🕐 {openingHours}</p>}
+          {email && (
+            <a href={`mailto:${email}`} className="inline-flex items-center gap-1.5 text-sm text-primary-600 break-all">
+              ✉️ {email}
+            </a>
+          )}
+          {fax && <p className="text-xs text-slate-600">📠 FAX: {fax}</p>}
+          {!address && !phone && !website && !email && !fax && !openingHours && accessItems.length === 0 && (
             <p className="text-xs text-slate-500">
               住所・電話・WebサイトはOSMに登録されていません。
             </p>
+          )}
+
+          {accessItems.length > 0 && (
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <p className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 text-xs font-medium text-slate-600">
+                ♿ バリアフリー情報
+              </p>
+              <ul className="px-3 py-2 space-y-1.5">
+                {accessItems.map((it) => (
+                  <li key={it.key} className="text-xs">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span aria-hidden="true">{it.icon}</span>
+                      <span className="text-slate-700">{it.label}</span>
+                      <span className={`border rounded-full px-2 py-0.5 ${it.cls}`}>{it.status}</span>
+                    </span>
+                    {it.note && (
+                      <span className="block text-[11px] text-slate-500 mt-0.5 break-words">{it.note}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {hasCoords && (

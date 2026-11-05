@@ -76,7 +76,7 @@ export function statsToCSV(stats) {
   const lines = []
   
   // 基本情報
-  lines.push(['# OSM Data Explorer 集計結果'])
+  lines.push(['# まちデータ帳 集計結果'])
   lines.push(['# 取得日時', stats.fetchedAt || ''])
   lines.push(['# 総件数', String(stats.total)])
   lines.push([])

@@ -1,15 +1,14 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { CATEGORY_GROUPS, getCategoriesForPurpose, CUISINES, isFoodCategory } from '../data/categories'
+import { CUISINES, isFoodCategory } from '../data/categories'
 import CategoryPicker from './CategoryPicker'
 
 /**
  * (#44 生活者目線UI)
- * variant='mobile' の場合:
- *   - カテゴリは目的アイコンチップ（CategoryPicker）で選ぶ
- *   - ラベルを生活者の言葉に（「どの街で探す？」「何を探す？」）
+ *   - 都道府県・市区町村はセレクトで選択
+ *   - カテゴリは目的アイコンチップ（CategoryPicker）で選ぶ（PC・モバイル共通）
+ *   - ラベルを生活者の言葉に（「どの県で探す？」「何を探す？」）
  *   - OSMデータ補完性の注意を分かりやすい表現で表示
- * PC（デフォルト）は従来の <select> 表示を維持する。
  */
 export default function MunicipalitySearch({ variant = 'pc' }) {
   const isMobile = variant === 'mobile'
@@ -183,33 +182,12 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
       {selectedMun && (
         <>
           <div>
-            {isMobile ? (
-              <>
-                <label className="block text-xs font-medium text-slate-600 mb-1">何を探す？（任意）</label>
-                <CategoryPicker variant="mobile" value={category} onChange={(id) => updateMunicipalitySearch('category', id)} />
-                <p className="mt-1.5 text-[11px] text-slate-400">
-                  ※ 掲載は OpenStreetMap（OSM）の登録情報です。すべての施設が登録されているわけではありません。
-                </p>
-              </>
-            ) : (
-              <>
-                <label className="block text-xs font-medium text-slate-600 mb-1">カテゴリ（任意）</label>
-                <select
-                  value={category}
-                  onChange={(e) => updateMunicipalitySearch('category', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                  <option value="">すべて（POI）</option>
-                  {CATEGORY_GROUPS.map(g => (
-                    <optgroup key={g.name} label={`${g.icon} ${g.name}`}>
-                      {getCategoriesForPurpose(g.name).map(c => (
-                        <option key={c.id} value={c.id}>{c.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </>
-            )}
+            {/* (#44) 地図モードと共通の目的チップ選択（PC・モバイル統一） */}
+            <label className="block text-xs font-medium text-slate-600 mb-1">何を探す？（任意）</label>
+            <CategoryPicker variant="mobile" value={category} onChange={(id) => updateMunicipalitySearch('category', id)} />
+            <p className="mt-1.5 text-[11px] text-slate-400">
+              ※ 掲載は OpenStreetMap（OSM）の登録情報です。すべての施設が登録されているとは限りません。
+            </p>
           </div>
 
           {/* (#54) 料理フィルタ: 飲食カテゴリ選択時のみ表示 */}

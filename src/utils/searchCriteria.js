@@ -13,7 +13,7 @@
  */
 import { buildSimpleQuery, buildPoiQuery, buildAdvancedQuery } from './overpass'
 import { checkBboxSize } from './geo'
-import { resolveSearchBbox } from './searchBbox'
+import { resolveSearchBbox, isValidBbox } from './searchBbox'
 
 // Overpass API の実用上の上限（useSearch と同じ基準）
 const MAX_AREA_KM2 = 40000
@@ -45,6 +45,14 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
     }
 
     const bbox = mun.bbox
+    // 縮退・逆順BBOX（Overpassが"bbox order"エラーで拒否する形状）を防ぐ
+    if (!isValidBbox(bbox)) {
+      return fail(
+        'no_bbox',
+        '検索範囲が設定されていません。',
+        '地図を移動・拡大して検索したい範囲を表示し、「検索する」を押してください。'
+      )
+    }
     const sizeCheck = checkBboxSize(bbox)
     if (sizeCheck.areaKm2 > MAX_AREA_KM2) {
       return fail('too_large', sizeCheck.message, 'より小さい市区町村を選択してください。')
@@ -65,7 +73,10 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
   }
 
   // ===== 地図モード (#41/#47) =====
-  const bbox = bboxOverride || resolveSearchBbox(state.bbox, mapBounds)
+  // bboxOverride も検証する（無効なら mapBounds / state.bbox へフォールバック）
+  const bbox =
+    (bboxOverride && isValidBbox(bboxOverride) ? bboxOverride : null) ||
+    resolveSearchBbox(state.bbox, mapBounds)
   if (!bbox) {
     return fail(
       'no_bbox',
