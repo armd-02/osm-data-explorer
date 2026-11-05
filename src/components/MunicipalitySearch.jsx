@@ -156,7 +156,7 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
       {/* 都道府県選択：図とプルダウンは同じ状態・選択処理を共有 */}
       <div>
         <label className="block text-xs font-medium text-slate-600 mb-1">
-          {isMobile ? 'どの都道府県で探す？' : '都道府県'}
+          {isMobile ? 'どの県で探す？' : '都道府県'}
         </label>
         <div className="flex justify-end mb-1">
           <button
