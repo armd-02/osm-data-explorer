@@ -53,6 +53,11 @@ function MobileChips({ value, onChange }) {
   }
 
   const tapPurpose = (name) => {
+    // (#44) 選択中カテゴリの目的と異なる目的を開くときは旧選択をクリアし、
+    // 意図しない古いカテゴリで検索されないようにする（stale条件の防止）
+    if (openPurpose !== name && selectedCat && purposeOf(selectedCat.id) !== name) {
+      onChange('')
+    }
     setOpenPurpose((cur) => (cur === name ? null : name))
   }
 
