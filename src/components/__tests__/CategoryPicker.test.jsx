@@ -11,6 +11,24 @@ function renderPicker(value = '', onChange = vi.fn()) {
   return render(<CategoryPicker variant="mobile" value={value} onChange={onChange} />)
 }
 
+/**
+ * valueを内部stateで管理するラッパー。
+ * onChangeで値が変わると再描画される（実際のAppContextの挙動を模倣）。
+ */
+function renderControlledPicker(initialValue, onChange = vi.fn()) {
+  function Controlled() {
+    const [value, setValue] = React.useState(initialValue)
+    return (
+      <CategoryPicker
+        variant="mobile"
+        value={value}
+        onChange={(v) => { onChange(v); setValue(v) }}
+      />
+    )
+  }
+  return render(<Controlled />)
+}
+
 describe('CategoryPicker（mobile: 目的チップ）', () => {
   it('6つの目的チップ（食べる・買う・遊ぶ・暮らす・学ぶ・その他）を表示する', () => {
     renderPicker()
@@ -38,6 +56,28 @@ describe('CategoryPicker（mobile: 目的チップ）', () => {
     expect(screen.getByRole('button', { name: 'コンビニ・スーパー' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '買う' }))
     expect(screen.queryByRole('button', { name: 'コンビニ・スーパー' })).toBeNull()
+  })
+
+  it('選択中カテゴリと異なる目的を展開すると旧選択がクリアされる（stale条件の防止）', () => {
+    const onChange = vi.fn()
+    renderControlledPicker('cafe', onChange) // カフェ（目的: 食べる）が選択中
+    // 「遊ぶ」目的チップをタップ → 選択中バッジが消え、遊ぶカテゴリが展開
+    fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
+    expect(onChange).toHaveBeenCalledWith('')
+    expect(screen.queryByRole('button', { name: '解除' })).toBeNull()
+    expect(screen.getByRole('button', { name: '公園・広場' })).toBeTruthy()
+    // 食べるのカテゴリは展開リストに現れない
+    expect(screen.queryByRole('button', { name: 'カフェ' })).toBeNull()
+  })
+
+  it('選択中カテゴリと同じ目的を展開すると選択は保持される', () => {
+    const onChange = vi.fn()
+    renderPicker('cafe', onChange)
+    fireEvent.click(screen.getByRole('button', { name: '食べる' }))
+    expect(onChange).not.toHaveBeenCalledWith('')
+    expect(screen.getByRole('button', { name: '解除' })).toBeTruthy()
+    // カフェチップが選択状態で表示される
+    expect(screen.getByRole('button', { name: 'カフェ' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('カテゴリチップをタップすると onChange にカテゴリIDが渡される（行は閉じる）', () => {
