@@ -578,19 +578,32 @@ export const PREFECTURE_BLOCKS = [
  * continue to come from municipalities.json (OpenStreetMap-derived data).
  */
 export default function PrefectureBlockMap({ selectedCode = '', availableCodes = [], onSelect }) {
+  const [zoomed, setZoomed] = React.useState(false)
   const available = new Set(availableCodes.map(code => String(code).padStart(2, '0')))
   const normalizedSelected = String(selectedCode).padStart(2, '0')
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-2">
-      <p className="text-xs text-slate-600 mb-2">
-        都道府県をクリック・タップしてください。スマホでは横にスクロールできます。
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <p className="text-xs text-slate-600">
+          都道府県のブロックをクリック・タップして選択
+        </p>
+        <button
+          type="button"
+          aria-pressed={zoomed}
+          onClick={() => setZoomed(value => !value)}
+          className="text-xs text-primary-700 underline underline-offset-2 min-h-[36px] px-2 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-700"
+        >
+          {zoomed ? '日本全体を見る' : '拡大して選ぶ'}
+        </button>
+      </div>
       <div className="overflow-x-auto overscroll-x-contain" aria-label="都道府県の選択図">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="-5 -5 290 260"
-          className="block w-[680px] h-auto max-w-none mx-auto"
+          className={zoomed
+            ? 'block w-[680px] h-auto max-w-none mx-auto'
+            : 'block w-full max-w-[680px] h-auto mx-auto'}
           role="group"
           aria-label="47都道府県から選択するブロック図"
         >
@@ -642,7 +655,12 @@ export default function PrefectureBlockMap({ selectedCode = '', availableCodes =
         </svg>
       </div>
       <p className="mt-2 text-[11px] text-slate-500">
-        ※ 位置・形を簡略化した選択用の図です。実際の検索範囲は選択した市区町村のデータを使用します。
+        {zoomed
+          ? '拡大中です。左右にスクロールするとほかの都道府県を選べます。'
+          : '小さなブロックは「拡大して選ぶ」を押してください。'}
+      </p>
+      <p className="mt-1 text-[11px] text-slate-500">
+        ※ 都道府県を選ぶための略図です。実際の検索範囲は選択した市区町村のデータを使用します。
       </p>
     </div>
   )
