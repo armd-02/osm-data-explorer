@@ -320,10 +320,12 @@ describe('(#59) 検索タブ: 地図モード検索', () => {
       expect(tabIsCurrent('一覧')).toBe(true)
     }, { timeout: 8000 })
 
-    // 全3件のカードが表示される（タップ可能=ボタン）
+    // (#44) 選択カテゴリ（カフェ）で結果が絞り込まれる: cafeカードのみ表示
+    // （モックはクエリ非依存の3件を返すが、reducerのミラーでcatFilter=cafeが適用される）
     expect(screen.getByRole('button', { name: /テスト珈琲店/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /ラーメン屋テスト/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /テスト書店/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /ラーメン屋テスト/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /テスト書店/ })).toBeNull()
+    expect(screen.getByText(/3件中、\s*1\s*件を表示/)).toBeTruthy()
   }, IT_TIMEOUT)
 
   it('タブを離れても検索条件（キーワード入力）が保持される', async () => {
@@ -469,7 +471,9 @@ describe('(#59) 一覧タブ: クライアント側フィルタ', () => {
   it('施設名フィルタでカードが絞られ、件数表示も更新される', async () => {
     renderApp()
 
-    selectCategoryChip('カフェ')
+    // キーワード検索（カテゴリ未選択=汎用POIクエリ）→ 全3件がフィルタ対象になる
+    const kwInput = screen.getByPlaceholderText('例: 珈琲、ラーメン')
+    fireEvent.change(kwInput, { target: { value: 'テスト' } })
     fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     await waitFor(() => {
@@ -582,6 +586,17 @@ describe('(#44) 目的チップとサンプル検索', () => {
       expect(screen.getByText('3件の結果を取得しました')).toBeTruthy()
     }, { timeout: 8000 })
     expect(tabIsCurrent('一覧')).toBe(true)
+
+    // (#44) サンプル検索は検索フォームのカテゴリにも反映される
+    // → 検索タブに戻るとPickerに「カフェ」が選択済みのバッジとして出る
+    fireEvent.click(screen.getByRole('button', { name: '検索' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '解除' })).toBeTruthy()
+    }, { timeout: 3000 })
+    // 選択中バッジ: 「🍜 カフェ」（バッジコンテナ内のspan。一覧タブのhidden select等の混在を避ける）
+    const release = screen.getByRole('button', { name: '解除' })
+    const badgeBox = release.parentElement
+    expect(within(badgeBox).getByText(/カフェ/)).toBeTruthy()
   }, IT_TIMEOUT)
 
   it('自治体モードで市区町村未選択のときサンプルタップは注意メッセージを表示し検索しない', async () => {

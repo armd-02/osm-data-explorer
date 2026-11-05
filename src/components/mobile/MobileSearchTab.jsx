@@ -114,6 +114,13 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
       setSampleMsg(c.message || '先に検索エリアを設定してください')
       return
     }
+    // (#44) 選択したカテゴリを検索フォームstateにも反映する。
+    // これで取得後の結果が選択カテゴリで絞り込まれ（reducerのミラー）、
+    // チップ表示・一覧フィルタ・共有URLが実行した検索と一致する。
+    dispatch({
+      type: searchSource === 'municipality' ? 'SET_MUNICIPALITY_SEARCH' : 'SET_SIMPLE_SEARCH',
+      payload: { category: catId, purpose: '' }
+    })
     setSampleMsg(null)
     search(c)
   }

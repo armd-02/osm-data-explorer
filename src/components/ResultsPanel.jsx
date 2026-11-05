@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { getGroupedCategories } from '../data/categories'
 import { applyResultFilters, hasActiveFilters } from '../utils/resultFilters'
+import { activeSearchOf } from '../state/appReducer'
 import { facilityName, facilityTypeLabel, formatAddress, safeWebsite } from '../utils/facilityLabels'
 import { wheelchairBadge } from '../utils/accessibility'
 
@@ -12,19 +13,31 @@ import { wheelchairBadge } from '../utils/accessibility'
  * 施設タイプは日本語ラベル（facilityTypeLabel）で表示し、
  * 住所・電話・公式サイトを追加列として出す。
  */
-const DEFAULT_FILTERS = { nameFilter: '', typeFilter: 'all', catFilter: '', websiteOnly: false, sortDir: 'none' }
+const DEFAULT_FILTERS = { nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none' }
 
 function ResultsPanel() {
   const { state, dispatch } = useApp()
   const { results, resultFilters, fetchMeta, searchSource, selectedMunicipality } = state
 
+  // (#44) カテゴリ選択は検索フォームと一覧フィルタを同じ値として扱う。
+  // ドロップダウンの操作は検索フォームのcategoryにdispatchし、
+  // reducerが resultFilters.catFilter をミラーする（データ取得後なら即絞り込み）。
+  const activeSearch = activeSearchOf(state) || {}
+  const searchFormType = searchSource === 'municipality' ? 'SET_MUNICIPALITY_SEARCH' : 'SET_SIMPLE_SEARCH'
+
   const update = (patch) => dispatch({ type: 'SET_RESULT_FILTERS', payload: patch })
-  const clear = () => dispatch({ type: 'SET_RESULT_FILTERS', payload: { ...DEFAULT_FILTERS } })
+  const changeCategory = (value) => dispatch({ type: searchFormType, payload: { category: value } })
+  const clear = () => {
+    dispatch({ type: searchFormType, payload: { category: '', purpose: '' } })
+    dispatch({ type: 'SET_RESULT_FILTERS', payload: { ...DEFAULT_FILTERS } })
+  }
   const active = hasActiveFilters(resultFilters)
   const displayResults = useMemo(
     () => applyResultFilters(results, resultFilters),
     [results, resultFilters]
   )
+  // 「絞り込み済み」表示はフィルタが実際に件数を減らしているときだけ出す
+  const narrowing = active && displayResults.length < (results || []).length
 
   const grouped = useMemo(() => getGroupedCategories(), [])
   const fmt = (n) => n.toLocaleString('ja-JP')
@@ -33,7 +46,7 @@ function ResultsPanel() {
     <aside className="bg-white rounded-lg border border-slate-200 flex flex-col flex-1 min-w-0">
       <div className="p-4 border-b border-slate-200">
         <div className="text-sm text-slate-600">
-          {active
+          {narrowing
             ? <>全 <strong className="text-primary-600">{fmt(results.length)}</strong> 件中、<strong className="text-primary-600">{fmt(displayResults.length)}</strong> 件を表示中</>
             : <>全 <strong className="text-primary-600">{fmt(results.length)}</strong> 件が見つかりました</>}
           {searchSource === 'municipality' && selectedMunicipality?.name && (
@@ -44,7 +57,7 @@ function ResultsPanel() {
           )}
         </div>
 
-        {active && (
+        {narrowing && (
           <div className="mt-1 text-xs text-amber-600">
             表示は絞り込み済みです。CSV / GeoJSON のエクスポートは「表示中」か「すべて」から選べます。
           </div>
@@ -70,8 +83,8 @@ function ResultsPanel() {
               <option value="relation">relation</option>
             </select>
             <select
-              value={resultFilters.catFilter}
-              onChange={(e) => update({ catFilter: e.target.value })}
+              value={activeSearch.category || ''}
+              onChange={(e) => changeCategory(e.target.value)}
               className="px-2 py-1.5 text-sm border border-slate-300 rounded-md bg-white"
               aria-label="施設の種類で絞る"
             >
@@ -140,7 +153,21 @@ function ResultsPanel() {
                   className="border-b border-slate-100"
                 >
                   <td className="px-3 py-2 text-slate-400 text-xs">{i + 1}</td>
-                  <td className="px-2 py-2 font-medium text-slate-800">{facilityName(r)}</td>
+                  <td className="px-2 py-2 font-medium text-slate-800">
+                    {facilityName(r)}
+                    {website && (
+                      <a
+                        href={website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="公式サイトを開く"
+                        className="ml-1 align-middle"
+                      >
+                        <span role="img" aria-label="公式サイトがあります">🔗</span>
+                      </a>
+                    )}
+                  </td>
                   <td className="px-2 py-2 text-slate-600 whitespace-nowrap">{facilityTypeLabel(r)}</td>
                   <td className="px-2 py-2 text-slate-500">
                     {formatAddress(r.tags) || <span className="text-slate-300">—</span>}
@@ -163,7 +190,10 @@ function ResultsPanel() {
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="text-primary-600 hover:underline text-xs"
-                      >開く</a>
+                        title={website}
+                      >
+                        <span role="img" aria-label="公式サイト">🔗</span>
+                      </a>
                     ) : (
                       <span className="text-slate-300 text-xs">—</span>
                     )}
