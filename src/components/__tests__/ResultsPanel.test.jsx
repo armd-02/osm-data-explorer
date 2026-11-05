@@ -125,3 +125,41 @@ describe('ResultsPanel: カテゴリ選択=検索フォームと同期 (#44)', (
     expect(screen.queryByText(/表示は絞り込み済みです/)).toBeNull()
   })
 })
+
+describe('ResultsPanel: カテゴリ選択肢は取得データに基づいて絞り込まれる (#44)', () => {
+  const park = { type: 'node', id: 3, name: '中央公園', tags: { leisure: 'park', name: '中央公園' } }
+
+  it('結果に出現したカテゴリのみを件数付きで表示する', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [...RESULTS, park] }]} />)
+    const select = screen.getByRole('combobox', { name: '施設の種類で絞る' })
+    const optTexts = [...select.options].map((o) => o.textContent)
+    expect(optTexts).toContain('すべての種類（3件）')
+    expect(optTexts).toContain('カフェ（2件）')
+    expect(optTexts).toContain('公園・広場（1件）')
+    // 結果に出現しないカテゴリ（レストラン等）は選択肢にない
+    expect(optTexts.some((t) => t.startsWith('レストラン'))).toBe(false)
+    expect(optTexts.some((t) => t.startsWith('薬局'))).toBe(false)
+  })
+
+  it('検索前（結果なし）は従来どおり全カテゴリ一覧を表示する', () => {
+    render(<Harness />)
+    const select = screen.getByRole('combobox', { name: '施設の種類で絞る' })
+    const optTexts = [...select.options].map((o) => o.textContent)
+    expect(optTexts).toContain('すべての種類')
+    expect(optTexts).toContain('薬局・ドラッグストア')
+    expect(optTexts.every((t) => !t.includes('件）'))).toBe(true)
+  })
+
+  it('選択中カテゴリは出現していなくても選択肢に残る（count 0）', () => {
+    render(<Harness
+      preActions={[
+        { type: 'SET_RESULTS', payload: RESULTS },
+        { type: 'SET_SIMPLE_SEARCH', payload: { category: 'hospital', purpose: '' } }
+      ]}
+    />)
+    const select = screen.getByRole('combobox', { name: '施設の種類で絞る' })
+    expect(select.value).toBe('hospital')
+    const optTexts = [...select.options].map((o) => o.textContent)
+    expect(optTexts).toContain('病院・クリニック（0件）')
+  })
+})

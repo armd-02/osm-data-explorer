@@ -190,8 +190,15 @@ export const CATEGORIES = [
 /**
  * カテゴリIDからカテゴリオブジェクトを取得
  */
+const CATEGORY_ID_INDEX = new Map()
+function ensureIndex() {
+  if (CATEGORY_ID_INDEX.size === 0) {
+    for (const c of CATEGORIES) CATEGORY_ID_INDEX.set(c.id, c)
+  }
+}
 export function getCategoryById(id) {
-  return CATEGORIES.find((c) => c.id === id) || null
+  ensureIndex()
+  return CATEGORY_ID_INDEX.get(id) || null
 }
 
 /**
