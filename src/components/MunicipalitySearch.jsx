@@ -155,10 +155,10 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
     <div className="space-y-3">
       {/* 都道府県選択：図とプルダウンは同じ状態・選択処理を共有 */}
       <div>
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <label className="block text-xs font-medium text-slate-600">
-            {isMobile ? 'どの都道府県で探す？' : '都道府県'}
-          </label>
+        <label className="block text-xs font-medium text-slate-600 mb-1">
+          {isMobile ? 'どの都道府県で探す？' : '都道府県'}
+        </label>
+        <div className="flex justify-end mb-1">
           <button
             type="button"
             aria-expanded={prefMapOpen}
