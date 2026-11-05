@@ -354,7 +354,7 @@ export async function executeOverpassQuery(query, options = {}) {
       return {
         results: cached.data,
         // i>0（前の候補が失敗して辿り着いた）場合はフォールバック発生として記録する
-        meta: { ...cached.meta, cached: true, fallback: i > 0, endpoint: getEndpointLabel(ep), attempts }
+        meta: { ...cached.meta, cached: true, fallback: i > 0, endpoint: getEndpointLabel(ep), elapsedMs: Date.now() - startedAt, attempts }
       }
     }
 
@@ -392,6 +392,7 @@ export async function executeOverpassQuery(query, options = {}) {
         fetchedAt: new Date().toISOString(),
         endpoint: getEndpointLabel(ep),
         elementCount: data.elements ? data.elements.length : 0,
+        elapsedMs: Date.now() - startedAt,
         cached: false,
         fallback: i > 0,
         attempts: attempts.concat({

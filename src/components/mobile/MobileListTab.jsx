@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import { getGroupedCategories } from '../../data/categories'
 import { applyResultFilters, hasActiveFilters } from '../../utils/resultFilters'
+import { countCategoriesInResults, filterGroupsByCounts } from '../../utils/resultCategories'
 import { activeSearchOf } from '../../state/appReducer'
 import EditPanel from '../EditPanel'
 import ExportBar from '../ExportBar'
@@ -45,6 +46,15 @@ export default function MobileListTab({ onOpenDetail }) {
   // （検索時にカテゴリを選択済みの場合は結果が既に絞り込まれているため不要）
   const narrowing = filtersActive && filtered.length < (results || []).length
 
+  // (#44) カテゴリの選択肢はOverpass取得データに基づいて絞り込む:
+  // 結果に実際に出現したカテゴリのみを、件数付きで表示する。
+  const catCounts = useMemo(() => countCategoriesInResults(results), [results])
+  const hasData = (results || []).length > 0
+  const filterGroups = useMemo(
+    () => (hasData ? filterGroupsByCounts(GROUPS, catCounts, activeSearch.category || '') : GROUPS),
+    [hasData, catCounts, activeSearch.category]
+  )
+
   const hasResults = status === 'success' && (results || []).length > 0
   const visible = filtered.slice(0, MAX_CARDS)
   const resetFilters = () => {
@@ -87,12 +97,12 @@ export default function MobileListTab({ onOpenDetail }) {
                 aria-label="カテゴリで絞り込む"
                 className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
-                <option value="">カテゴリ: すべて</option>
-                {GROUPS.map((g) => (
+                <option value="">{hasData ? `カテゴリ: すべて（${(results || []).length.toLocaleString('ja-JP')}件）` : 'カテゴリ: すべて'}</option>
+                {filterGroups.map((g) => (
                   <optgroup key={g.group} label={g.group}>
                     {g.categories.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.label}
+                        {hasData ? `${c.label}（${c.count.toLocaleString('ja-JP')}件）` : c.label}
                       </option>
                     ))}
                   </optgroup>

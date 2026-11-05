@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { getGroupedCategories } from '../data/categories'
 import { applyResultFilters, hasActiveFilters } from '../utils/resultFilters'
+import { countCategoriesInResults, filterGroupsByCounts } from '../utils/resultCategories'
 import { activeSearchOf } from '../state/appReducer'
 import { facilityName, facilityTypeLabel, formatAddress, safeWebsite } from '../utils/facilityLabels'
 import { wheelchairBadge } from '../utils/accessibility'
@@ -41,6 +42,15 @@ function ResultsPanel() {
 
   const grouped = useMemo(() => getGroupedCategories(), [])
   const fmt = (n) => n.toLocaleString('ja-JP')
+
+  // (#44) カテゴリの選択肢はOverpass取得データに基づいて絞り込む:
+  // 結果に実際に出現したカテゴリのみを、件数付きで表示する。
+  const catCounts = useMemo(() => countCategoriesInResults(results), [results])
+  const hasData = Array.isArray(results) && results.length > 0
+  const filterGroups = useMemo(
+    () => (hasData ? filterGroupsByCounts(grouped, catCounts, activeSearch.category || '') : grouped),
+    [hasData, grouped, catCounts, activeSearch.category]
+  )
 
   return (
     <aside className="bg-white rounded-lg border border-slate-200 flex flex-col flex-1 min-w-0">
@@ -88,11 +98,13 @@ function ResultsPanel() {
               className="px-2 py-1.5 text-sm border border-slate-300 rounded-md bg-white"
               aria-label="施設の種類で絞る"
             >
-              <option value="">すべての種類</option>
-              {grouped.map((g) => (
+              <option value="">{hasData ? `すべての種類（${fmt(results.length)}件）` : 'すべての種類'}</option>
+              {filterGroups.map((g) => (
                 <optgroup key={g.group} label={g.group}>
                   {g.categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
+                    <option key={c.id} value={c.id}>
+                      {hasData ? `${c.label}（${fmt(c.count)}件）` : c.label}
+                    </option>
                   ))}
                 </optgroup>
               ))}

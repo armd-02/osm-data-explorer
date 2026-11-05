@@ -104,3 +104,23 @@ describe('MobileListTab: 公式サイトアイコン', () => {
     expect(screen.getAllByText(/公式サイト/)).toHaveLength(1)
   })
 })
+
+describe('MobileListTab: カテゴリ選択肢は取得データに基づいて絞り込まれる (#44)', () => {
+  it('結果に出現したカテゴリのみを件数付きで表示する', () => {
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: [cafeWithWeb, park] },
+      { type: 'SET_STATUS', payload: 'success' }
+    ]} />)
+    const select = screen.getByRole('combobox', { name: 'カテゴリで絞り込む' })
+    const optTexts = [...select.options].map((o) => o.textContent)
+    expect(optTexts).toContain('カテゴリ: すべて（2件）')
+    expect(optTexts).toContain('カフェ（1件）')
+    expect(optTexts).toContain('公園・広場（1件）')
+    expect(optTexts.some((t) => t.startsWith('レストラン'))).toBe(false)
+  })
+
+  it('結果なしときはカテゴリセレクト自体が表示されない（フィルタバー非表示）', () => {
+    render(<Harness />)
+    expect(screen.queryByRole('combobox', { name: 'カテゴリで絞り込む' })).toBeNull()
+  })
+})
