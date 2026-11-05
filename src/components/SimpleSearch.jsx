@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { getCategoryById, categoryToReadableTags, CUISINES, isFoodCategory } from '../data/categories'
+import { getCategoryById, categoryToReadableTags, CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
 import { geocode } from '../utils/geo'
 import { useMapRef } from '../hooks/useMapRef'
 import CategoryPicker from './CategoryPicker'
@@ -18,7 +18,7 @@ function SimpleSearch({ variant = 'pc' }) {
     ? { keyword: '施設名・キーワード', location: '地名' }
     : { keyword: '名前やキーワード', location: '場所（地名）' }
   const { state, dispatch } = useApp()
-  const { category, keyword, location, cuisine } = state.simpleSearch
+  const { category, keyword, location, cuisine, purpose } = state.simpleSearch
   const [geocoding, setGeocoding] = useState(false)
   const [geocodeMsg, setGeocodeMsg] = useState(null)
   const mapRef = useMapRef()
@@ -74,7 +74,12 @@ function SimpleSearch({ variant = 'pc' }) {
         <label className="block text-sm font-medium text-slate-700 mb-1">
           何を探す？（任意）
         </label>
-        <CategoryPicker variant="mobile" value={category} onChange={(id) => update('category', id)} />
+        <CategoryPicker
+          variant="mobile"
+          value={category}
+          onChange={(id) => update('category', id)}
+          onPurposeChange={(p) => update('purpose', p || '')}
+        />
         {selectedCat && (
           <div className="mt-1.5 bg-slate-50 rounded px-2 py-1.5">
             <p className="text-[11px] text-slate-500">
@@ -88,9 +93,16 @@ function SimpleSearch({ variant = 'pc' }) {
         <p className="mt-1.5 text-[11px] text-slate-400">
           ※ 掲載は OpenStreetMap（OSM）の登録情報です。すべての施設が登録されているとは限りません。
         </p>
-        {!category && (
+        {!category && purpose && (
+          <div className="mt-1.5 bg-primary-50 border border-primary-100 rounded px-2 py-1">
+            <p className="text-[11px] text-primary-800">
+              「{purpose}」の施設種類に絞って検索します：{getPurposeLabelList(purpose)}
+            </p>
+          </div>
+        )}
+        {!category && !purpose && (
           <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1">
-            カテゴリ未指定のときは、範囲内の「お店・施設」を広く検索します。目的のカテゴリを選ぶと、その施設だけに絞ってすばやく探せます。
+            何も選ばずに検索すると、範囲内の「お店・施設」を広く探します。目的（食べる・遊ぶなど）をタップするとその施設だけに、カテゴリチップを選ぶと1つの施設種類に絞られます。
           </p>
         )}
       </div>

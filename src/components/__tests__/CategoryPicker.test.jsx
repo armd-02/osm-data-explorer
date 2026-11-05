@@ -7,15 +7,33 @@ import { CATEGORY_GROUPS } from '../../data/categories'
 
 afterEach(cleanup)
 
-function renderPicker(value = '', onChange = vi.fn()) {
-  return render(<CategoryPicker variant="mobile" value={value} onChange={onChange} />)
+function renderPicker(value = '', onChange = vi.fn(), onPurposeChange = vi.fn()) {
+  return render(
+    <CategoryPicker variant="mobile" value={value} onChange={onChange} onPurposeChange={onPurposeChange} />
+  )
 }
 
 /**
  * valueを内部stateで管理するラッパー。
  * onChangeで値が変わると再描画される（実際のAppContextの挙動を模倣）。
  */
-function renderControlledPicker(initialValue, onChange = vi.fn()) {
+function renderControlledPicker(initialValue, onChange = vi.fn(), onPurposeChange = vi.fn()) {
+  function Controlled() {
+    const [value, setValue] = React.useState(initialValue)
+    return (
+      <CategoryPicker
+        variant="mobile"
+        value={value}
+        onChange={(v) => { onChange(v); setValue(v) }}
+        onPurposeChange={onPurposeChange}
+      />
+    )
+  }
+  return render(<Controlled />)
+}
+
+// onPurposeChangeなし（旧挙動の検証用）
+function renderControlledPickerLegacy(initialValue, onChange = vi.fn()) {
   function Controlled() {
     const [value, setValue] = React.useState(initialValue)
     return (
@@ -60,7 +78,7 @@ describe('CategoryPicker（mobile: 目的チップ）', () => {
 
   it('選択中カテゴリと異なる目的を展開すると旧選択がクリアされる（stale条件の防止）', () => {
     const onChange = vi.fn()
-    renderControlledPicker('cafe', onChange) // カフェ（目的: 食べる）が選択中
+    renderControlledPickerLegacy('cafe', onChange) // カフェ（目的: 食べる）が選択中
     // 「遊ぶ」目的チップをタップ → 選択中バッジが消え、遊ぶカテゴリが展開
     fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
     expect(onChange).toHaveBeenCalledWith('')
@@ -69,6 +87,64 @@ describe('CategoryPicker（mobile: 目的チップ）', () => {
     // 食べるのカテゴリは展開リストに現れない
     expect(screen.queryByRole('button', { name: 'カフェ' })).toBeNull()
   })
+
+describe('CategoryPicker（mobile: 目的スコープ報告 #44）', () => {
+  it('目的チップをタップ（展開）すると onPurposeChange(目的名) が呼ばれる', () => {
+    const onPurposeChange = vi.fn()
+    renderPicker('', vi.fn(), onPurposeChange)
+    fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
+    expect(onPurposeChange).toHaveBeenCalledWith('遊ぶ')
+  })
+
+  it('同じ目的チップを再タップ（閉じる）すると onPurposeChange(null) が呼ばれる', () => {
+    const onPurposeChange = vi.fn()
+    renderPicker('', vi.fn(), onPurposeChange)
+    fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
+    onPurposeChange.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
+    expect(onPurposeChange).toHaveBeenCalledWith(null)
+  })
+
+  it('カテゴリチップをタップすると onPurposeChange(null) が呼ばれる（カテゴリが優先）', () => {
+    const onChange = vi.fn()
+    const onPurposeChange = vi.fn()
+    renderPicker('', onChange, onPurposeChange)
+    fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
+    expect(onPurposeChange).toHaveBeenLastCalledWith('遊ぶ')
+    onPurposeChange.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: '公園・広場' }))
+    expect(onChange).toHaveBeenCalledWith('park')
+    expect(onPurposeChange).toHaveBeenCalledWith(null)
+  })
+
+  it('解除ボタンをタップすると onPurposeChange(null) が呼ばれる', () => {
+    const onChange = vi.fn()
+    const onPurposeChange = vi.fn()
+    renderPicker('cafe', onChange, onPurposeChange)
+    fireEvent.click(screen.getByRole('button', { name: '解除' }))
+    expect(onChange).toHaveBeenCalledWith('')
+    expect(onPurposeChange).toHaveBeenCalledWith(null)
+  })
+
+  it('異なる目的を展開すると旧選択クリアと新しい目的スコープがセットされる', () => {
+    const onChange = vi.fn()
+    const onPurposeChange = vi.fn()
+    renderControlledPicker('cafe', onChange, onPurposeChange) // カフェ（食べる）選択中
+    fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
+    expect(onChange).toHaveBeenCalledWith('')
+    expect(onPurposeChange).toHaveBeenCalledWith('遊ぶ')
+  })
+
+  it('同じ目的のカテゴリ選択中は目的チップ展開でスコープがセットされない', () => {
+    const onPurposeChange = vi.fn()
+    renderPicker('cafe', vi.fn(), onPurposeChange) // カフェ（食べる）選択中
+    fireEvent.click(screen.getByRole('button', { name: '食べる' }))
+    // カテゴリが優先されるため onPurposeChange は呼ばれない
+    expect(onPurposeChange).not.toHaveBeenCalled()
+    // 選択は保持される
+    expect(screen.getByRole('button', { name: '解除' })).toBeTruthy()
+  })
+})
 
   it('選択中カテゴリと同じ目的を展開すると選択は保持される', () => {
     const onChange = vi.fn()

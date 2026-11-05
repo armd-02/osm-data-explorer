@@ -8,7 +8,9 @@ import {
   categoryToQueryFilter,
   isFoodCategory,
   getCategoriesForPurpose,
-  getPurposeOfCategory
+  getPurposeOfCategory,
+  getPurposeUnionFilters,
+  getPurposeLabelList
 } from '../../data/categories'
 
 describe('カテゴリの目的ベースグループ化（#44 生活者目線UI）', () => {
@@ -107,5 +109,29 @@ describe('カテゴリの目的ベースグループ化（#44 生活者目線UI�
       expect(g.icon).toBeTruthy()
       expect(g.icon.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('#44 目的スコープ検索（getPurposeUnionFilters / getPurposeLabelList）', () => {
+  it('getPurposeUnionFilters: グループ内全カテゴリのタグ条件を重複除去してunion化できる', () => {
+    const filters = getPurposeUnionFilters('遊ぶ')
+    // 公園2 + スポーツ1 + 博物館1 + 寺院神社2 + 宿泊2 = 8条件
+    expect(filters).toHaveLength(8)
+    expect(filters).toContain('leisure~"^(park|playground|garden|pitch)$"')
+    expect(filters).toContain('amenity=plaza')
+    expect(filters).toContain('amenity=place_of_worship')
+    expect(filters).toContain('building=hotel')
+    // 単一カテゴリ（カフェ）のフィルタが混入しない
+    expect(filters).not.toContain('amenity=cafe')
+  })
+
+  it('getPurposeUnionFilters: 未知の目的・空は空配列', () => {
+    expect(getPurposeUnionFilters('存在しない目的')).toEqual([])
+    expect(getPurposeUnionFilters('')).toEqual([])
+  })
+
+  it('getPurposeLabelList: グループ内カテゴリラベルを「・」区切りで返す', () => {
+    expect(getPurposeLabelList('遊ぶ')).toBe('公園・広場・スポーツ施設・美術館・博物館・寺院・神社・宿泊施設')
+    expect(getPurposeLabelList('存在しない目的')).toBe('')
   })
 })

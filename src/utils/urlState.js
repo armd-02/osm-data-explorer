@@ -25,7 +25,8 @@ const PARAM_KEYS = {
   tab: 'tab',        // right panel tab
   src: 'src',        // (#44) search source: m(unicipality) / m(ap)
   mun: 'mun',        // (#44) municipality code
-  cuisine: 'cu'      // (#54) cuisine value (cuisine filter, food categories only)
+  cuisine: 'cu',     // (#54) cuisine value (cuisine filter, food categories only)
+  purpose: 'p'       // (#44) purpose scope (食べる・遊ぶなど、カテゴリ未選択時の絞り込み)
 }
 
 /**
@@ -57,6 +58,7 @@ export function encodeStateToURL(state) {
       if (ms.category) params.set(PARAM_KEYS.cat, ms.category)
       if (ms.keyword) params.set(PARAM_KEYS.kw, ms.keyword)
       if (ms.cuisine) params.set(PARAM_KEYS.cuisine, ms.cuisine)
+      if (ms.purpose) params.set(PARAM_KEYS.purpose, ms.purpose)
     }
   } else {
     // Map mode (default)
@@ -70,6 +72,7 @@ export function encodeStateToURL(state) {
       if (state.simpleSearch.keyword) params.set(PARAM_KEYS.kw, state.simpleSearch.keyword)
       if (state.simpleSearch.location) params.set(PARAM_KEYS.loc, state.simpleSearch.location)
       if (state.simpleSearch.cuisine) params.set(PARAM_KEYS.cuisine, state.simpleSearch.cuisine)
+      if (state.simpleSearch.purpose) params.set(PARAM_KEYS.purpose, state.simpleSearch.purpose)
     }
     // Advanced search
     if (state.searchMode === 'advanced') {
@@ -113,10 +116,12 @@ export function decodeURLToState(searchParams) {
     // (#47) 自治体モード用のカテゴリ・キーワード
     // (#54) cuisine + 旧 c=ramen の自動マッピング
     const resolved = resolveCategoryAndCuisine(params.get(PARAM_KEYS.cat), params.get(PARAM_KEYS.cuisine))
+    const munPurpose = params.get(PARAM_KEYS.purpose) || ''
     state.municipalitySearch = {
       category: resolved.category,
       keyword: params.get(PARAM_KEYS.kw) || '',
-      cuisine: resolved.cuisine
+      cuisine: resolved.cuisine,
+      purpose: munPurpose
     }
     hasData = true
   } else {
@@ -137,8 +142,9 @@ export function decodeURLToState(searchParams) {
     const resolved = resolveCategoryAndCuisine(params.get(PARAM_KEYS.cat), params.get(PARAM_KEYS.cuisine))
     const kw = params.get(PARAM_KEYS.kw)
     const loc = params.get(PARAM_KEYS.loc)
-    if (resolved.category || resolved.cuisine || kw || loc) {
-      state.simpleSearch = { category: resolved.category, keyword: kw || '', location: loc || '', cuisine: resolved.cuisine }
+    const purpose = params.get(PARAM_KEYS.purpose) || ''
+    if (resolved.category || resolved.cuisine || kw || loc || purpose) {
+      state.simpleSearch = { category: resolved.category, keyword: kw || '', location: loc || '', cuisine: resolved.cuisine, purpose }
       hasData = true
     }
 

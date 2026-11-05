@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { CUISINES, isFoodCategory } from '../data/categories'
+import { CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
 import CategoryPicker from './CategoryPicker'
 
 /**
@@ -27,7 +27,7 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
   const [prefCode, setPrefCode] = useState('')
   const [munCode, setMunCode] = useState('')
   // (#47) カテゴリ・キーワードは親stateに上げ、検索ボタンと共有する
-  const { category, keyword, cuisine } = state.municipalitySearch || { category: '', keyword: '', cuisine: '' }
+  const { category, keyword, cuisine, purpose } = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
 
   // (#54) 飲食カテゴリ選択時のみcuisineフィルタを表示。非飲食カテゴリ・未選択時は自動クリア
   const showCuisine = isFoodCategory(category)
@@ -184,10 +184,27 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
           <div>
             {/* (#44) 地図モードと共通の目的チップ選択（PC・モバイル統一） */}
             <label className="block text-xs font-medium text-slate-600 mb-1">何を探す？（任意）</label>
-            <CategoryPicker variant="mobile" value={category} onChange={(id) => updateMunicipalitySearch('category', id)} />
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              ※ 掲載は OpenStreetMap（OSM）の登録情報です。すべての施設が登録されているとは限りません。
-            </p>
+            <CategoryPicker
+              variant="mobile"
+              value={category}
+              onChange={(id) => updateMunicipalitySearch('category', id)}
+              onPurposeChange={(p) => updateMunicipalitySearch('purpose', p || '')}
+            />
+            {category && (
+              <p className="mt-1.5 text-[11px] text-slate-400">
+                ※ 掲載は OpenStreetMap（OSM）の登録情報です。すべての施設が登録されているとは限りません。
+              </p>
+            )}
+            {!category && purpose && (
+              <p className="mt-1.5 text-[11px] text-primary-800">
+                「{purpose}」の施設種類に絞って検索します：{getPurposeLabelList(purpose)}
+              </p>
+            )}
+            {!category && !purpose && (
+              <p className="mt-1.5 text-[11px] text-amber-700">
+                何も選ばずに検索すると、市区町村内の「お店・施設」を広く探します。目的（食べる・遊ぶなど）をタップするとその施設だけに絞られます。
+              </p>
+            )}
           </div>
 
           {/* (#54) 料理フィルタ: 飲食カテゴリ選択時のみ表示 */}

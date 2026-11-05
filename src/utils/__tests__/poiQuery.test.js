@@ -24,6 +24,31 @@ describe('#44 buildPoiQuery', () => {
     expect(query).not.toContain('[building]')
   })
 
+  it('目的のみ指定時: その目的の施設種類unionに絞る（#44 目的スコープ）', () => {
+    const { query } = buildPoiQuery(testBbox, '', '', '', '遊ぶ')
+    // 遊ぶグループのフィルタが含まれる
+    expect(query).toContain('[leisure~"^(park|playground|garden|pitch)$"]')
+    expect(query).toContain('[amenity=plaza]')
+    expect(query).toContain('[amenity=place_of_worship]')
+    // 遊ぶに無関係なカテゴリ・汎用POIブランチは含まれない
+    expect(query).not.toContain('[amenity=cafe]')
+    expect(query).not.toContain('[shop]')
+    expect(query).not.toContain('[office]')
+  })
+
+  it('カテゴリ+目的指定時: カテゴリが優先される（目的unionは使わない）', () => {
+    const { query } = buildPoiQuery(testBbox, 'cafe', '', '', '遊ぶ')
+    expect(query).toContain('[amenity=cafe]')
+    expect(query).not.toContain('[amenity=place_of_worship]')
+    expect(query).not.toContain('[shop]')
+  })
+
+  it('不明な目的名: 汎用POI検索にフォールバックする', () => {
+    const { query } = buildPoiQuery(testBbox, '', '', '', '存在しない目的')
+    expect(query).toContain('[amenity]')
+    expect(query).toContain('[shop]')
+  })
+
   it('キーワードが返される', () => {
     const { keyword } = buildPoiQuery(testBbox, 'cafe', '星巴克')
     expect(keyword).toBe('星巴克')

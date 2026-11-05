@@ -64,8 +64,8 @@ function App() {
           // 単一値として振る舞い、「カテゴリを変えたのにモード切替で古い値に
           // 戻る（カテゴリが変わってない）」問題を解消する。
           const src = action.payload
-          const ms = state.municipalitySearch || { category: '', keyword: '', cuisine: '' }
-          const ss = state.simpleSearch || { category: '', keyword: '', location: '', cuisine: '' }
+          const ms = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
+          const ss = state.simpleSearch || { category: '', keyword: '', location: '', cuisine: '', purpose: '' }
           if (src === 'municipality') {
             return {
               ...state,
@@ -74,7 +74,8 @@ function App() {
                 ...ms,
                 category: ss.category,
                 keyword: ss.keyword,
-                cuisine: ss.cuisine
+                cuisine: ss.cuisine,
+                purpose: ss.purpose || ''
               }
             }
           }
@@ -86,7 +87,8 @@ function App() {
                 ...ss,
                 category: ms.category,
                 keyword: ms.keyword,
-                cuisine: ms.cuisine
+                cuisine: ms.cuisine,
+                purpose: ms.purpose || ''
               }
             }
           }
@@ -104,7 +106,7 @@ function App() {
     },
     {
       searchMode: 'simple',
-      simpleSearch: { category: '', keyword: '', location: '', cuisine: '' },
+      simpleSearch: { category: '', keyword: '', location: '', cuisine: '', purpose: '' },
       advancedSearch: { tags: [], keyword: '', useAnd: true },
       bbox: null,
       status: 'idle',
@@ -116,7 +118,7 @@ function App() {
       activeResultId: null,
       searchSource: 'map',
       selectedMunicipality: null,
-      municipalitySearch: { category: '', keyword: '', cuisine: '' },
+      municipalitySearch: { category: '', keyword: '', cuisine: '', purpose: '' },
       resultFilters: { nameFilter: '', typeFilter: 'all', catFilter: '', websiteOnly: false, sortDir: 'none' }
     }
   )

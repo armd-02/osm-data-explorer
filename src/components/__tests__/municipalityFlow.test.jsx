@@ -368,6 +368,27 @@ describe('自治体モード E2E（カテゴリ反映の検証）', () => {
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
     expect(overpassCalls[0]).toContain('amenity=cafe')
   }, IT_TIMEOUT)
+
+  it('目的のみ選択（カテゴリ未選択）→検索: クエリがその目的の施設種類に限定される (#44)', async () => {
+    renderApp()
+    fireEvent.click(screen.getByText('自治体から探す'))
+    await selectMunicipality('大阪府', '高槻市')
+
+    // 「遊ぶ」目的チップのみタップ（カテゴリチップは押さない）
+    fireEvent.click(screen.getByRole('button', { name: '遊ぶ' }))
+
+    fireEvent.click(screen.getByText('検索する'))
+
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    const q = overpassCalls[0]
+    // 遊ぶグループのタグ条件が含まれる
+    expect(q).toContain('[leisure~"^(park|playground|garden|pitch)$"]')
+    expect(q).toContain('[amenity=plaza]')
+    expect(q).toContain('[amenity=place_of_worship]')
+    // 遊ぶに無関係なカテゴリ・汎用POIブランチは含まれない
+    expect(q).not.toContain('[amenity=cafe]')
+    expect(q).not.toContain('node[shop]')
+  }, IT_TIMEOUT)
 })
 
 describe('#54 料理（cuisine）フィルタ E2E', () => {
