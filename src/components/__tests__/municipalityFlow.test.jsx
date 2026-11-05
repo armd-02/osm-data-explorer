@@ -516,3 +516,31 @@ describe('#54 料理（cuisine）フィルタ E2E', () => {
     expect(overpassCalls[0]).toContain('[amenity=restaurant][cuisine=ramen]')
   }, IT_TIMEOUT)
 })
+
+
+describe('都道府県ブロック図と既存の市区町村検索の連携', () => {
+  it('ブロック図で大阪府を選ぶと府県コード27がセットされ、高槻市の検索に進める', async () => {
+    renderApp()
+    fireEvent.click(screen.getByText('自治体から探す'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '大阪府' })).toBeTruthy()
+    }, { timeout: 3000 })
+
+    fireEvent.click(screen.getByRole('button', { name: '大阪府' }))
+    await waitFor(() => {
+      expect(getSelectByLabel('都道府県').value).toBe('27')
+      expect(screen.getByText('日本地図から選ぶ')).toBeTruthy()
+      expect(getSelectByLabel('市区町村')).toBeTruthy()
+    }, { timeout: 3000 })
+
+    const munSelect = getSelectByLabel('市区町村')
+    fireEvent.change(munSelect, { target: { value: '272078' } })
+    expect(screen.getByText(/高槻市とその周辺/)).toBeTruthy()
+
+    fireEvent.click(screen.getByText('検索する'))
+    await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
+    expect(overpassCalls[0]).toContain('34.780510')
+    expect(overpassCalls[0]).toContain('135.672640')
+  }, IT_TIMEOUT)
+})

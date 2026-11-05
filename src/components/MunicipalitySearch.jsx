@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
 import CategoryPicker from './CategoryPicker'
+import PrefectureBlockMap from './PrefectureBlockMap'
 
 /**
  * (#44 生活者目線UI)
@@ -26,6 +27,8 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
   const [loading, setLoading] = useState(true)
   const [prefCode, setPrefCode] = useState('')
   const [munCode, setMunCode] = useState('')
+  // 選択後は図を折りたたみ、市区町村の選択へ進める
+  const [prefMapOpen, setPrefMapOpen] = useState(true)
   // (#47) カテゴリ・キーワードは親stateに上げ、検索ボタンと共有する
   const { category, keyword, cuisine, purpose } = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
 
@@ -62,6 +65,7 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
     if (!mun || mun.code === munCode) return
     setPrefCode(mun.prefCode)
     setMunCode(mun.code)
+    setPrefMapOpen(false)
     // (#46) 表示名・BBOXが未設定ならデータから補完
     if (!state.selectedMunicipality.name || !state.selectedMunicipality.bbox) {
       dispatch({ type: 'SET_MUNICIPALITY', payload: {
@@ -103,11 +107,17 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
   }, [data, munCode])
 
   // 都道府県変更時、自治体選択をリセットし、親stateからもクリア (#47)
-  const handlePrefChange = (e) => {
-    setPrefCode(e.target.value)
+  const choosePrefecture = (rawCode) => {
+    const normalized = rawCode ? String(rawCode).padStart(2, '0') : ''
+    // SVG code (01〜47) is mapped to the codes in municipalities.json.
+    const pref = PREFECTURES.find(p => String(p.code).padStart(2, '0') === normalized)
+    setPrefCode(pref?.code || '')
     setMunCode('')
     dispatch({ type: 'SET_MUNICIPALITY', payload: null })
+    if (pref) setPrefMapOpen(false)
   }
+
+  const handlePrefChange = (e) => choosePrefecture(e.target.value)
 
   // (#47) 市区町村選択を親stateに同期（検索ボタンのdisable判定・BBOX共有用）
   const handleMunChange = (e) => {
@@ -143,10 +153,32 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
 
   return (
     <div className="space-y-3">
-      {/* 都道府県選択 */}
+      {/* 都道府県選択：図とプルダウンは同じ状態・選択処理を共有 */}
       <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの県で探す？' : '都道府県'}</label>
+        <label className="block text-xs font-medium text-slate-600 mb-1">
+          {isMobile ? 'どの県で探す？' : '都道府県'}
+        </label>
+        <div className="flex justify-end mb-1">
+          <button
+            type="button"
+            aria-expanded={prefMapOpen}
+            onClick={() => setPrefMapOpen(v => !v)}
+            className="text-xs text-primary-700 hover:underline min-h-[36px] px-2"
+          >
+            {prefMapOpen ? '地図を閉じる' : '日本地図から選ぶ'}
+          </button>
+        </div>
+        {prefMapOpen && (
+          <div className="mb-3">
+            <PrefectureBlockMap
+              selectedCode={prefCode}
+              availableCodes={PREFECTURES.map(p => p.code)}
+              onSelect={choosePrefecture}
+            />
+          </div>
+        )}
         <select
+          aria-label="都道府県を一覧から選択"
           value={prefCode}
           onChange={handlePrefChange}
           className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
