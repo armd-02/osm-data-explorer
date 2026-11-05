@@ -104,10 +104,11 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
   // (#44) サンプルアクション: 現在のエリア+目的カテゴリで即検索
   const handleSample = (catId) => {
     const mapBounds = searchSource === 'map' ? readMapBounds() : null
+    // サンプルは具体カテゴリで検索するため、目的スコープはクリアする
     const next =
       searchSource === 'municipality'
-        ? { ...state, municipalitySearch: { ...state.municipalitySearch, category: catId } }
-        : { ...state, simpleSearch: { ...state.simpleSearch, category: catId } }
+        ? { ...state, municipalitySearch: { ...state.municipalitySearch, category: catId, purpose: '' } }
+        : { ...state, simpleSearch: { ...state.simpleSearch, category: catId, purpose: '' } }
     const c = buildSearchCriteria(next, mapBounds ? { mapBounds } : {})
     if (c.ok !== true) {
       setSampleMsg(c.message || '先に検索エリアを設定してください')

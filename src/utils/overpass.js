@@ -3,7 +3,7 @@
  * UIからクエリ生成を分離したデータ取得層
  */
 import { getOverpassUrl, getEndpointLabel, APP_CONFIG, FALLBACK_ENDPOINT_ORDER } from '../config'
-import { getCategoryById, categoryToQueryFilter, isFoodCategory } from '../data/categories'
+import { getCategoryById, categoryToQueryFilter, isFoodCategory, getPurposeUnionFilters } from '../data/categories'
 
 // ============================================================
 // メモリキャッシュ
@@ -104,45 +104,47 @@ function buildPoiBody(bboxStr) {
     .join('\n  ')
 }
 
-export function buildSimpleQuery(bbox, category, keyword, cuisine = '') {
-  const { south, west, north, east } = bbox
-  const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
-
+/**
+ * (#44) POI検索本体の生成（地図・自治体両モードで意味を統一）
+ * 優先度: カテゴリ > 目的スコープ > 汎用POI
+ *  - カテゴリ指定: そのカテゴリのタグ条件
+ *  - 目的指定のみ: その目的に属する全カテゴリのOR union（「遊ぶ」なら公園・スポーツ・博物館・寺院神社・宿泊）
+ *  - どちらもなし: POI対象タグ（amenity/shop/tourism/leisure/office/healthcare/craft）
+ */
+function buildPoiSearchBody(bboxStr, category, cuisine, purpose = '') {
   const catFilter = buildCategoryFilter(category)
   const cuisineAnd = buildCuisineAndFilters(category, cuisine)
 
-  let body
   if (catFilter && (catFilter.unionFilters.length > 0 || (catFilter.andFilters && catFilter.andFilters.length > 0))) {
-    body = buildFilterBody(bboxStr, catFilter, cuisineAnd)
-  } else {
-    // (#44) カテゴリなし: POI対象タグに限定（道路・建物等の全地物取得はしない）
-    body = `  ${buildPoiBody(bboxStr)}`
+    return buildFilterBody(bboxStr, catFilter, cuisineAnd)
   }
+  if (purpose) {
+    const filters = getPurposeUnionFilters(purpose)
+    if (filters.length > 0) {
+      return buildFilterBody(bboxStr, { unionFilters: filters, andFilters: [] }, [])
+    }
+  }
+  // (#44) カテゴリ・目的とも未指定: POI対象タグに限定（道路・建物等の全地物取得はしない）
+  return `  ${buildPoiBody(bboxStr)}`
+}
 
+export function buildSimpleQuery(bbox, category, keyword, cuisine = '', purpose = '') {
+  const { south, west, north, east } = bbox
+  const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
+  const body = buildPoiSearchBody(bboxStr, category, cuisine, purpose)
   const query = `[out:json][timeout:25];(\n${body}\n);\nout body center;\n`
   return { query, keyword }
 }
 
 /**
- * (#44) 自治体POI検索用クエリを生成
- * カテゴリ指定時: buildSimpleQuery と同じロジック
- * カテゴリ未指定: POI対象タグ（amenity/shop/tourism/leisure/office/healthcare/craft）に限定
+ * (#44) 自治体POI検索用クエリを生成（buildSimpleQuery と同一ロジック）
+ * カテゴリ指定: カテゴリのタグ条件 / 目的のみ指定: 目的の施設種類union /
+ * 未指定: POI対象タグ（amenity/shop/tourism/leisure/office/healthcare/craft）に限定
  */
-export function buildPoiQuery(bbox, category, keyword, cuisine = '') {
+export function buildPoiQuery(bbox, category, keyword, cuisine = '', purpose = '') {
   const { south, west, north, east } = bbox
   const bboxStr = [south, west, north, east].map(n => n.toFixed(6)).join(',')
-
-  const catFilter = category ? buildCategoryFilter(category) : null
-  const cuisineAnd = buildCuisineAndFilters(category, cuisine)
-
-  let body
-  if (catFilter && (catFilter.unionFilters.length > 0 || (catFilter.andFilters && catFilter.andFilters.length > 0))) {
-    body = buildFilterBody(bboxStr, catFilter, cuisineAnd)
-  } else {
-    // (#44) カテゴリ未指定: POI対象タグに限定（道路・建物等を除外）
-    body = `  ${buildPoiBody(bboxStr)}`
-  }
-
+  const body = buildPoiSearchBody(bboxStr, category, cuisine, purpose)
   const query = `[out:json][timeout:25];(\n${body}\n);\nout body center;\n`
   return { query, keyword }
 }

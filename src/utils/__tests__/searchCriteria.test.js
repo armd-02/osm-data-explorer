@@ -53,6 +53,31 @@ describe('buildSearchCriteria — 地図モード（かんたん検索）', () =
     expect(criteria.query).toContain(`node[amenity=cafe](${BBOX_STR});`)
   })
 
+  it('目的のみ指定時: 目的スコープクエリを生成する (#44 目的スコープ)', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: '', keyword: '', location: '', purpose: '遊ぶ' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.category).toBe('')
+    expect(criteria.purpose).toBe('遊ぶ')
+    expect(criteria.query).toContain(`node[leisure~"^(park|playground|garden|pitch)$"](${BBOX_STR});`)
+    expect(criteria.query).toContain(`node[amenity=place_of_worship](${BBOX_STR});`)
+    // 遊ぶに無関係なカテゴリ・汎用POIブランチは含まれない
+    expect(criteria.query).not.toContain('[amenity=cafe]')
+    expect(criteria.query).not.toContain(`node[shop](${BBOX_STR});`)
+  })
+
+  it('カテゴリ+目的指定時: カテゴリが優先される', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'cafe', keyword: '', location: '', purpose: '遊ぶ' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.query).toContain(`node[amenity=cafe](${BBOX_STR});`)
+    expect(criteria.query).not.toContain('[amenity=place_of_worship]')
+  })
+
   it('状態BBOXがない場合、地図表示範囲(mapBounds)を使う (#41/#47)', () => {
     const bounds = leafletLikeBounds({ south: 35.6, west: 139.7, north: 35.7, east: 139.8 })
     const criteria = buildSearchCriteria(baseState({
@@ -172,6 +197,18 @@ describe('buildSearchCriteria — 自治体モード (#44/#47)', () => {
     expect(criteria.query).toContain(`node[shop](${BBOX_STR});`)
     // 全要素（フィルタなし）検索にはしない
     expect(criteria.query).not.toContain(`node(${BBOX_STR});`)
+  })
+
+  it('目的のみ指定時: 地図モードと同一の目的スコープクエリを生成する (#44)', () => {
+    const criteria = buildSearchCriteria(baseState({
+      searchSource: 'municipality',
+      selectedMunicipality: { code: '27214', name: '高槻市', bbox: SMALL_BBOX },
+      municipalitySearch: { category: '', keyword: '', purpose: '遊ぶ' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.purpose).toBe('遊ぶ')
+    expect(criteria.query).toContain(`node[leisure~"^(park|playground|garden|pitch)$"](${BBOX_STR});`)
+    expect(criteria.query).not.toContain(`node[shop](${BBOX_STR});`)
   })
 
   it('カテゴリ変更直後のstateでも新しいカテゴリが反映される（dispatch競合なし）', () => {

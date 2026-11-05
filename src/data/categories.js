@@ -268,6 +268,46 @@ export function getPurposeOfCategory(categoryId) {
 }
 
 /**
+ * (#44) 目的グループ全体のunionフィルタ一覧を取得（目的スコープ検索用）
+ *
+ * 「遊ぶ」などを目的チップとして選択したとき、その目的に属する全カテゴリの
+ * タグ条件を1つのOR unionにまとめる。カテゴリ未選択のまま検索すると、
+ * 「その目的の施設種類」に絞ったOverpassクエリが生成される。
+ *
+ * @param {string} purposeName - '食べる' | '買う' | '遊ぶ' | '暮らす' | '学ぶ' | 'その他'
+ * @returns {Array<string>} Overpass QLフィルタ文字列の配列（角括弧なし）。
+ *   未知の目的・カテゴリが空の場合は空配列。
+ */
+export function getPurposeUnionFilters(purposeName) {
+  const cats = getCategoriesForPurpose(purposeName)
+  if (!cats || cats.length === 0) return []
+  const filters = []
+  const seen = new Set()
+  for (const cat of cats) {
+    const f = categoryToQueryFilter(cat)
+    for (const fl of f.unionFilters) {
+      if (!seen.has(fl)) {
+        seen.add(fl)
+        filters.push(fl)
+      }
+    }
+    // 注: 現行カテゴリはすべてlogic='or'のためandFiltersは空。
+    // 将来AND条件カテゴリが目的グループに入ったら、ここでunionブランチ化を追加する。
+  }
+  return filters
+}
+
+/**
+ * (#44) 目的グループの施設種類ラベルを「・」区切りで返す（UI案内文用）
+ * 例: getPurposeLabelList('遊ぶ') → '公園・広場・スポーツ施設・美術館・博物館・寺院・神社・宿泊施設'
+ */
+export function getPurposeLabelList(purposeName) {
+  const cats = getCategoriesForPurpose(purposeName)
+  if (!cats || cats.length === 0) return ''
+  return cats.map((c) => c.label).join('・')
+}
+
+/**
  * ドメイン別にグループ化したカテゴリを返す（セレクトの <optgroup> 描画用）。
  * @returns {Array<{ group: string, categories: Array<object> }>}
  */

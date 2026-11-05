@@ -10,11 +10,17 @@ import { CATEGORY_GROUPS, getCategoriesForPurpose, getCategoryById, getPurposeOf
  *                  （段階的開示 = progressive disclosure）
  */
 
-export default function CategoryPicker({ value, onChange, variant = 'pc' }) {
+/**
+ * onPurposeChange: 目的チップのタップを検索スコープとして親に報告する（#44）
+ *  - 目的チップを開く: onPurposeChange(目的名) → 「その目的の施設種類」に絞って検索可能
+ *  - 目的チップを閉じる・カテゴリチップ選択・解除: onPurposeChange(null) → 目的スコープ解除
+ *  （カテゴリが選択中はカテゴリが優先され、目的スコープはセットされない）
+ */
+export default function CategoryPicker({ value, onChange, onPurposeChange, variant = 'pc' }) {
   if (variant === 'pc') {
     return <PcSelect value={value} onChange={onChange} />
   }
-  return <MobileChips value={value} onChange={onChange} />
+  return <MobileChips value={value} onChange={onChange} onPurposeChange={onPurposeChange} />
 }
 
 // ===== PC: グループ付きセレクト =====
@@ -40,7 +46,7 @@ function PcSelect({ value, onChange }) {
 
 // ===== モバイル: 目的アイコンチップ + 段階的開示 =====
 
-function MobileChips({ value, onChange }) {
+function MobileChips({ value, onChange, onPurposeChange = () => {} }) {
   const [openPurpose, setOpenPurpose] = useState(null)
 
   const selectedCat = value ? getCategoryById(value) : null
@@ -53,21 +59,38 @@ function MobileChips({ value, onChange }) {
   }
 
   const tapPurpose = (name) => {
-    // (#44) 選択中カテゴリの目的と異なる目的を開くときは旧選択をクリアし、
-    // 意図しない古いカテゴリで検索されないようにする（stale条件の防止）
-    if (openPurpose !== name && selectedCat && purposeOf(selectedCat.id) !== name) {
-      onChange('')
+    // (#44) 目的チップのタップは「その目的の施設種類に絞る」検索スコープ
+    if (openPurpose === name) {
+      // 再タップで閉じる: 目的スコープを解除
+      onPurposeChange(null)
+      setOpenPurpose(null)
+      return
     }
-    setOpenPurpose((cur) => (cur === name ? null : name))
+    if (selectedCat) {
+      if (purposeOf(selectedCat.id) === name) {
+        // 同じ目的のカテゴリが選択中: カテゴリが優先されるためスコープはセットしない
+        // （旧選択のクリアもせず、リストの閲覧用のみ開く）
+        setOpenPurpose(name)
+        return
+      }
+      // 異なる目的: 旧選択をクリア（stale条件の防止）＋新しい目的スコープをセット
+      onChange('')
+      onPurposeChange(name)
+    } else {
+      onPurposeChange(name)
+    }
+    setOpenPurpose(name)
   }
 
   const tapCategory = (catId) => {
     if (value === catId) {
       onChange('') // 再タップで選択解除
+      onPurposeChange(null)
       setOpenPurpose(null)
       return
     }
     onChange(catId)
+    onPurposeChange(null) // カテゴリが選択されれば目的スコープは不要
     setOpenPurpose(null)
   }
 
@@ -129,7 +152,10 @@ function MobileChips({ value, onChange }) {
           </span>
           <button
             type="button"
-            onClick={() => onChange('')}
+            onClick={() => {
+              onChange('')
+              onPurposeChange(null)
+            }}
             className="ml-auto text-xs text-primary-700 underline min-h-[24px] px-1"
           >
             解除
