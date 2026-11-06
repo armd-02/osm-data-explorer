@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import BatchMatch from '../BatchMatch'
+import MobileBatchMatch from './MobileBatchMatch'
 import StatisticsPanel from '../StatisticsPanel'
 import AboutPanel from '../AboutPanel'
 import ExportBar from '../ExportBar'
@@ -44,7 +44,7 @@ export default function MobileOtherTab() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {sub === 'batch' && <BatchMatch />}
+        {sub === 'batch' && <MobileBatchMatch />}
         {sub === 'stats' && (
           <div className="p-3 space-y-3">
             <StatisticsPanel />

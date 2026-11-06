@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { computeStatistics, statsToCSV } from '../utils/statistics'
 import { downloadFile } from '../utils/export'
+import CategorySummaryTable from './CategorySummaryTable'
 
 /**
  * 集計・分類・属性欠損分析パネル
@@ -27,6 +28,7 @@ function StatisticsPanel() {
       <div className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 border-b border-slate-200">
         {[
           { id: 'overview', label: '概要' },
+          { id: 'category', label: 'カテゴリ別' },
           { id: 'tags', label: 'タグ別' },
           { id: 'missing', label: '欠損' }
         ].map(t => (
@@ -52,6 +54,7 @@ function StatisticsPanel() {
       {/* 内容 */}
       <div className="flex-1 overflow-y-auto p-3">
         {tab === 'overview' && <OverviewTab stats={stats} fetchMeta={fetchMeta} />}
+        {tab === 'category' && <CategorySummaryTable summary={stats.categorySummary} />}
         {tab === 'tags' && <TagsTab stats={stats} />}
         {tab === 'missing' && <MissingTab stats={stats} />}
       </div>

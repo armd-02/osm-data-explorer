@@ -2,24 +2,29 @@
  * 検索結果の集計・分類・属性欠損分析
  */
 import { safeWebsite, formatAddress } from './facilityLabels'
+import { CATEGORIES } from '../data/categories'
+import { categoryMatchesElement } from './categoryMatch'
+import { profileFor } from './categoryProfiles'
 
 /**
  * 集計データを計算
  */
 export function computeStatistics(results, meta = {}) {
+  const m = meta || {}
+  const list = Array.isArray(results) ? results : []
   const stats = {
-    total: results.length,
+    total: list.length,
     byType: {},
     byTag: {},
     missingAttributes: {},
     topNames: [],
-    fetchedAt: meta.fetchedAt || null,
-    endpoint: meta.endpoint || null,
-    cached: meta.cached || false
+    fetchedAt: m.fetchedAt || null,
+    endpoint: m.endpoint || null,
+    cached: m.cached || false
   }
 
   // 型別集計
-  for (const r of results) {
+  for (const r of list) {
     stats.byType[r.type] = (stats.byType[r.type] || 0) + 1
   }
 
@@ -28,7 +33,7 @@ export function computeStatistics(results, meta = {}) {
   for (const tag of ANALYZE_TAGS) {
     const values = {}
     let present = 0
-    for (const r of results) {
+    for (const r of list) {
       const val = r.tags?.[tag]
       if (val) {
         present++
@@ -44,22 +49,74 @@ export function computeStatistics(results, meta = {}) {
   const CHECK_TAGS = ['phone', 'website', 'opening_hours', 'email', 'addr:street', 'addr:city', 'addr:postcode']
   for (const tag of CHECK_TAGS) {
     let present = 0
-    for (const r of results) {
+    for (const r of list) {
       if (r.tags?.[tag]) present++
     }
-    const rate = results.length > 0 ? (present / results.length * 100) : 0
+    const rate = list.length > 0 ? (present / list.length * 100) : 0
     stats.missingAttributes[tag] = {
       present,
-      missing: results.length - present,
+      missing: list.length - present,
       rate: Math.round(rate * 10) / 10
     }
   }
 
   // 名前がある/ない
-  stats.hasName = results.filter(r => r.name).length
-  stats.noName = results.length - stats.hasName
+  stats.hasName = list.filter(r => r.name).length
+  stats.noName = list.length - stats.hasName
+
+  // (集計表) カテゴリ別集計（アプリのカテゴリ体系に基づく）
+  stats.categorySummary = computeCategorySummary(list)
 
   return stats
+}
+
+/**
+ * (集計表) カテゴリ別集計を計算
+ *
+ * - カテゴリ判定は categoryMatchesElement（アプリのカテゴリ体系、#44 の
+ *   カテゴリ絞り込みと同じロジック）を使用する。生のOSMタグ値（amenity=cafe など）
+ *   ではなく、CATEGORIES の日本語ラベル（「カフェ」など）で集計する。
+ * - 1つの要素が複数のカテゴリに属する場合は、各カテゴリに計上する
+ *   （例: amenity=cafe は「カフェ」と「飲食店（すべて）」の両方に含まれる）。
+ * - brand 内訳: brand タグをキーに集計し、brand が無い場合は名称
+ *   （r.name / tags.name）にフォールバックする。名称も無い要素は
+ *   件数には計上されるが内訳には含まれない。
+ *
+ * @param {Array<object>} results Overpass正規化済みの要素
+ * @returns {Array<{id, label, icon, count, breakdown: Array<{name, count}>}>}
+ *   件数が多いカテゴリ順
+ */
+export function computeCategorySummary(results) {
+  const list = Array.isArray(results) ? results : []
+  const counts = {}
+  const brandCounts = {}
+
+  for (const r of list) {
+    if (!r || !r.tags) continue
+    const brandKey = r.tags.brand || r.name || r.tags.name || ''
+    for (const c of CATEGORIES) {
+      if (!categoryMatchesElement(c.id, r)) continue
+      counts[c.id] = (counts[c.id] || 0) + 1
+      if (brandKey) {
+        if (!brandCounts[c.id]) brandCounts[c.id] = {}
+        brandCounts[c.id][brandKey] = (brandCounts[c.id][brandKey] || 0) + 1
+      }
+    }
+  }
+
+  return Object.entries(counts).map(([id, count]) => {
+    const cat = CATEGORIES.find((c) => c.id === id)
+    const profile = profileFor(id)
+    return {
+      id,
+      label: cat ? cat.label : id,
+      icon: (profile && profile.icon) || '📍',
+      count,
+      breakdown: Object.entries(brandCounts[id] || {})
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, n]) => ({ name, count: n }))
+    }
+  }).sort((a, b) => b.count - a.count)
 }
 
 /**
@@ -157,6 +214,26 @@ export function statsToCSV(stats) {
   lines.push(['attribute', 'present', 'missing', 'present_rate(%)'])
   for (const [tag, data] of Object.entries(stats.missingAttributes)) {
     lines.push([tag, String(data.present), String(data.missing), String(data.rate)])
+  }
+
+  // (集計表) カテゴリ別集計（アプリのカテゴリ体系のラベル）
+  const categorySummary = stats.categorySummary || []
+  if (categorySummary.length > 0) {
+    lines.push([])
+    lines.push(['# カテゴリ別集計'])
+    lines.push(['category', 'count'])
+    for (const c of categorySummary) {
+      lines.push([c.label, String(c.count)])
+    }
+
+    lines.push([])
+    lines.push(['# カテゴリ別ブランド内訳 (brandタグ、名称にフォールバック)'])
+    lines.push(['category', 'name', 'count'])
+    for (const c of categorySummary) {
+      for (const b of c.breakdown.slice(0, 50)) {
+        lines.push([c.label, b.name, String(b.count)])
+      }
+    }
   }
 
   return lines.map(l => l.map(v => String(v ?? '')).join(',')).join('\n')
