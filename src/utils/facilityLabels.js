@@ -206,6 +206,21 @@ const CATEGORY_MATCH_ORDER = [
 ]
 
 /**
+ * (A3) 要素が該当するカテゴリIDを返す（該当なければ null）
+ * カテゴリ別情報設計（categoryProfiles.js）のプロファイル解決に使う。
+ * @param {object} result - Overpass result（{ type, id, tags }）
+ * @returns {string|null} 例: 'cafe' / 'park' / 'transport'
+ */
+export function facilityCategoryId(result) {
+  const tags = (result && result.tags) || {}
+  if (!Object.keys(tags).length) return null
+  for (const catId of CATEGORY_MATCH_ORDER) {
+    if (categoryMatchesElement(catId, result)) return catId
+  }
+  return null
+}
+
+/**
  * 要素の施設タイプを日本語ラベルで返す（#44）
  * @param {object} result - Overpass result（{ type, id, tags }）
  * @returns {string} 例: 'カフェ' / '公園' / '駅'

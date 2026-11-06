@@ -6,6 +6,10 @@ import { countCategoriesInResults, filterGroupsByCounts } from '../utils/resultC
 import { activeSearchOf } from '../state/appReducer'
 import { facilityName, facilityTypeLabel, formatAddress, safeWebsite } from '../utils/facilityLabels'
 import { wheelchairBadge } from '../utils/accessibility'
+import AttributeCompleteness from './AttributeCompleteness'
+import { missingAttributesOf, ATTRIBUTE_LABELS } from '../utils/statistics'
+import { buildIdElementUrl } from '../utils/editLinks'
+import { keyInfoFor } from '../utils/categoryProfiles'
 
 /**
  * 検索結果一覧（PC）
@@ -14,7 +18,7 @@ import { wheelchairBadge } from '../utils/accessibility'
  * 施設タイプは日本語ラベル（facilityTypeLabel）で表示し、
  * 住所・電話・公式サイトを追加列として出す。
  */
-const DEFAULT_FILTERS = { nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none' }
+const DEFAULT_FILTERS = { nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none', missingFilter: 'none' }
 
 function ResultsPanel() {
   const { state, dispatch } = useApp()
@@ -65,7 +69,20 @@ function ResultsPanel() {
           {fetchMeta && (
             <div className="mt-1 text-xs text-slate-500">取得: {Math.round(fetchMeta.elapsedMs)}ms</div>
           )}
+          {/* (B2) 欠落フィルタアクティブ時の案内 */}
+          {resultFilters.missingFilter && resultFilters.missingFilter !== 'none' && displayResults.length > 0 && (
+            <div className="mt-1 text-xs text-amber-600">
+              主要属性が未登録の施設を優先表示中（{resultFilters.missingFilter === 'any' ? 'いずれかの属性' : ATTRIBUTE_LABELS[resultFilters.missingFilter] + 'の欠落'}）
+            </div>
+          )}
         </div>
+
+        {/* (B1) 属性の充足率: 表示中結果（自治体×カテゴリ / 地図検索+絞り込み）を追従 */}
+        {displayResults.length > 0 && (
+          <div className="mt-1.5">
+            <AttributeCompleteness results={displayResults} />
+          </div>
+        )}
 
         {narrowing && (
           <div className="mt-1 text-xs text-amber-600">
@@ -120,7 +137,7 @@ function ResultsPanel() {
               <option value="desc">名称ほ-あ</option>
             </select>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs text-slate-600">
               <input
                 type="checkbox"
@@ -129,7 +146,21 @@ function ResultsPanel() {
               />
               公式サイトがあるものだけ
             </label>
-            <button onClick={clear} className="text-xs text-slate-500 hover:text-primary-600">クリア</button>
+            {/* (B2) 主要属性の欠落で絞り込む */}
+            <select
+              value={resultFilters.missingFilter || 'none'}
+              onChange={(e) => update({ missingFilter: e.target.value })}
+              className="flex-1 min-w-0 px-2 py-1 text-xs border border-slate-300 rounded-md bg-white"
+              aria-label="属性の欠落で絞る"
+            >
+              <option value="none">未登録の絞り込み: なし</option>
+              <option value="any">いずれかの属性が未登録</option>
+              <option value="phone">電話が未登録</option>
+              <option value="opening_hours">営業時間が未登録</option>
+              <option value="website">Webサイトが未登録</option>
+              <option value="address">住所が未登録</option>
+            </select>
+            <button onClick={clear} className="text-xs text-slate-500 hover:text-primary-600 shrink-0">クリア</button>
           </div>
         </div>
       </div>
@@ -145,15 +176,19 @@ function ResultsPanel() {
               <th className="px-2 py-2 text-left">電話</th>
               <th className="px-2 py-2 text-left">バリアフリー</th>
               <th className="px-2 py-2 text-left">公式サイト</th>
+              <th className="px-2 py-2 text-left">編集</th>
             </tr>
           </thead>
           <tbody>
             {displayResults.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
-                  {active
-                    ? '条件に一致する施設はありません。フィルタを緩めてみてください。'
-                    : '結果が見つかりませんでした。範囲を広げたり、カテゴリやキーワードを変えて再検索してください。'}
+                <td colSpan={8} className="px-3 py-8 text-center text-slate-400">
+                  {/* (A4) 0件は「失敗」ではなく「まだ登録がない」として伝える */}
+                  {active && (resultFilters.missingFilter || 'none') !== 'none' && (results || []).length > 0
+                    ? 'この地域では、該当する未登録施設はありません — 主要属性が充実しています。'
+                    : active
+                      ? '条件に一致する施設はありません。フィルタを緩めてみてください。'
+                      : 'この地域ではまだ登録がありません。範囲を広げたり、カテゴリやキーワードを変えて再検索するか、iDエディタで追加できます。'}
                 </td>
               </tr>
             ) : displayResults.map((r, i) => {
@@ -179,6 +214,32 @@ function ResultsPanel() {
                         <span role="img" aria-label="公式サイトがあります">🔗</span>
                       </a>
                     )}
+                    {/* (B2) 欠落フィルタアクティブ時: 未登録属性をバッジで表示 */}
+                    {(resultFilters.missingFilter || 'none') !== 'none' && (() => {
+                      const missing = missingAttributesOf(r)
+                      if (missing.length === 0) return null
+                      return (
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {missing.map((k) => (
+                            <span key={k} className="text-[10px] text-red-700 border border-red-200 bg-red-50 rounded-full px-1.5 py-0 whitespace-nowrap">
+                              {ATTRIBUTE_LABELS[k]} 未登録
+                            </span>
+                          ))}
+                        </span>
+                      )
+                    })()}
+                    {/* (A3) カテゴリ別ハイライト: そのカテゴリに意味のある属性のみ */}
+                    {(() => {
+                      const ki = keyInfoFor(r)
+                      const extra = ki.items.find((it) => it.key === 'cuisine') ||
+                        ki.items.find((it) => it.key === 'wheelchair')
+                      if (!extra) return null
+                      return (
+                        <span className="mt-0.5 block text-[11px] text-slate-500">
+                          {ki.icon} {extra.text}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="px-2 py-2 text-slate-600 whitespace-nowrap">{facilityTypeLabel(r)}</td>
                   <td className="px-2 py-2 text-slate-500">
@@ -209,6 +270,19 @@ function ResultsPanel() {
                     ) : (
                       <span className="text-slate-300 text-xs">—</span>
                     )}
+                  </td>
+                  {/* (B3) iD編集導線: 各施設を特定した状態でiDへジャンプ */}
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    <a
+                      href={buildIdElementUrl(r)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-primary-600 hover:underline text-xs"
+                      title="iDエディタで編集（OSMアカウント必要）"
+                    >
+                      ✏️ iD
+                    </a>
                   </td>
                 </tr>
               )

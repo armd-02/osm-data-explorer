@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext'
 import { setMapInstance } from '../hooks/useMapRef'
 import MapToolbar from './MapToolbar'
 import { wheelchairBadge } from '../utils/accessibility'
+import { buildOsmElementUrl, buildIdElementUrl } from '../utils/editLinks'
 
 // Default center: Osaka, Japan
 const DEFAULT_CENTER = [34.6937, 135.5023]
@@ -183,7 +184,8 @@ function MapView({ onMarkerClick = null }) {
           } else {
             const name = escapeHtml(result.name || '（名前のない要素）')
             const type = escapeHtml(result.type || 'node')
-            const osmUrl = `https://www.openstreetmap.org/${result.type}/${result.id}`
+            const osmUrl = buildOsmElementUrl(result)
+            const idUrl = escapeHtml(buildIdElementUrl(result)) // (B3) iD編集導線
             const wc = wheelchairBadge(result.tags)
             const wcRow = wc
               ? `<div style="color:#047857;font-size:11px">♿ ${escapeHtml(wc.text)}</div>`
@@ -198,7 +200,7 @@ function MapView({ onMarkerClick = null }) {
                 <strong>${name}</strong><br/>
                 <span style="color:#666">${type} / ID: ${result.id}</span><br/>
                 ${wcRow}
-                <a href="${osmUrl}" target="_blank" rel="noopener" style="color:#2563eb;font-size:11px">🔗 OSMで開く</a>
+                <a href="${osmUrl}" target="_blank" rel="noopener" style="color:#2563eb;font-size:11px">🔗 OSMで開く</a> <a href="${idUrl}" target="_blank" rel="noopener" style="color:#2563eb;font-size:11px;margin-left:6px">✏️ iDで編集</a><br/>
                 ${keyTags}
               </div>
             `)

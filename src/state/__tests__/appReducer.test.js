@@ -145,3 +145,27 @@ describe('データ取得後のカテゴリ・目的ミラー (#44)', () => {
     expect(s.resultFilters.catFilter).toBe('')
   })
 })
+
+// (A2) 共有URL復元時のフィルタ適用
+describe('SET_RESULT_FILTERS (A2)', () => {
+  it('部分オブジェクトで既存フィルタをマージする', () => {
+    let s = withResults(createInitialState())
+    s = appReducer(s, { type: 'SET_RESULT_FILTERS', payload: { nameFilter: 'coffee', sortDir: 'desc' } })
+    expect(s.resultFilters.nameFilter).toBe('coffee')
+    expect(s.resultFilters.sortDir).toBe('desc')
+    // 指定のないキーは維持
+    expect(s.resultFilters.typeFilter).toBe('all')
+    expect(s.resultFilters.missingFilter).toBe('none')
+  })
+
+  it('検索フォームのミラー導出（syncCategoryFilters）より後に適用するとフィルタ値が維持される', () => {
+    let s = createInitialState()
+    s = appReducer(s, { type: 'SET_SIMPLE_SEARCH', payload: { category: 'cafe', keyword: '', location: '', cuisine: '', purpose: '' } })
+    // (URL復元順: 検索state → フィルタ) 結果がまだ空のためミラー導出はno-op
+    s = appReducer(s, { type: 'SET_RESULT_FILTERS', payload: { nameFilter: 'コーヒー' } })
+    s = withResults(s)
+    // SET_RESULTSのミラー導出は catFilter/purposeFilter のみ書き換える
+    expect(s.resultFilters.catFilter).toBe('cafe')
+    expect(s.resultFilters.nameFilter).toBe('コーヒー')
+  })
+})

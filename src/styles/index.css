@@ -13,6 +13,24 @@
   --color-primary-900: #1e3a8a;
 }
 
+/* 都道府県ブロック地図（タイルグリッド） */
+.pref-tile {
+  cursor: pointer;
+}
+.pref-tile:hover rect {
+  fill: #dbeafe;
+  stroke: #93c5fd;
+}
+.pref-tile:focus-visible rect {
+  stroke: #2563eb;
+  stroke-width: 2.5;
+}
+/* 選択済みタイルはホバーでも選択色を維持 */
+.pref-tile--selected:hover rect {
+  fill: #2563eb;
+  stroke: #1e40af;
+}
+
 /* Leaflet map container */
 .leaflet-container {
   width: 100%;

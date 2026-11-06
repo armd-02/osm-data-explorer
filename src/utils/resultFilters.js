@@ -13,6 +13,7 @@
  *   - catFilter:    施設カテゴリID（categoryMatchesElement で判定）
  *   - purposeFilter: 目的名（その目的に属するカテゴリのいずれかに一致するものだけ）
  *   - websiteOnly:  公式サイトが登録されているものだけ
+ *   - missingFilter: 主要属性の欠落で絞り込み（none | any | phone | opening_hours | website | address）(B2)
  *   - sortDir:      施設名で並び替え（none | asc | desc）
  *
  * (#44) catFilter / purposeFilter は検索フォームのカテゴリ・目的選択のミラー
@@ -22,6 +23,7 @@
 import { categoryMatchesElement } from './categoryMatch'
 import { facilityName } from './facilityLabels'
 import { getCategoriesForPurpose } from '../data/categories'
+import { missingAttributesOf } from './statistics'
 
 /**
  * アクティブなフィルタが1つでも存在するか
@@ -34,6 +36,7 @@ export function hasActiveFilters(filters) {
     (f.catFilter || '') ||
     (f.purposeFilter || '') ||
     f.websiteOnly ||
+    (f.missingFilter && f.missingFilter !== 'none') ||
     (f.sortDir && f.sortDir !== 'none')
   )
 }
@@ -74,6 +77,15 @@ export function applyResultFilters(results, filters) {
 
   if (f.websiteOnly) {
     out = out.filter((r) => !!(r.tags?.['website'] || r.tags?.['official_website']))
+  }
+
+  // (B2) 主要属性が欠落している施設だけを表示
+  if (f.missingFilter && f.missingFilter !== 'none') {
+    out = out.filter((r) => {
+      const missing = missingAttributesOf(r)
+      if (f.missingFilter === 'any') return missing.length > 0
+      return missing.includes(f.missingFilter)
+    })
   }
 
   if (f.sortDir === 'asc' || f.sortDir === 'desc') {

@@ -7,6 +7,8 @@ import { activeSearchOf } from '../../state/appReducer'
 import EditPanel from '../EditPanel'
 import ExportBar from '../ExportBar'
 import MobileFacilityCard from './MobileFacilityCard'
+import AttributeCompleteness from '../AttributeCompleteness'
+import { ATTRIBUTE_LABELS } from '../../utils/statistics'
 
 /**
  * (#59) モバイル「一覧」タブ
@@ -60,7 +62,7 @@ export default function MobileListTab({ onOpenDetail }) {
   const resetFilters = () => {
     // 検索フォームのカテゴリ・目的選択も一緒に解除する（状態の整合性）
     dispatch({ type: searchFormType, payload: { category: '', purpose: '' } })
-    setFilters({ nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none' })
+    setFilters({ nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none', missingFilter: 'none' })
   }
 
   return (
@@ -79,6 +81,9 @@ export default function MobileListTab({ onOpenDetail }) {
             {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
             {narrowing ? '（フィルタ適用中）' : ''}
           </p>
+
+          {/* (B1) 属性の充足率: 表示中結果を追従 */}
+          <AttributeCompleteness results={filtered} className="my-1" />
 
           {/* フィルタバー */}
           <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
@@ -128,6 +133,20 @@ export default function MobileListTab({ onOpenDetail }) {
               />
               Webサイトがあるものだけ
             </label>
+            {/* (B2) 主要属性の欠落で絞り込む */}
+            <select
+              value={resultFilters.missingFilter || 'none'}
+              onChange={(e) => setFilters({ missingFilter: e.target.value })}
+              aria-label="属性の欠落で絞る"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="none">未登録の絞り込み: なし</option>
+              <option value="any">いずれかの属性が未登録</option>
+              <option value="phone">電話が未登録</option>
+              <option value="opening_hours">営業時間が未登録</option>
+              <option value="website">Webサイトが未登録</option>
+              <option value="address">住所が未登録</option>
+            </select>
           </div>
         </>
       )}
@@ -135,7 +154,10 @@ export default function MobileListTab({ onOpenDetail }) {
       {hasResults && filtered.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center space-y-2">
           <p className="text-sm text-amber-800">
-            現在の絞り込み条件に一致する施設はありません。
+            {/* (A4) 未登録絞り込みで0件は「失敗」ではなく「充実」の好機として伝える */}
+            {(resultFilters.missingFilter || 'none') !== 'none'
+              ? 'この地域では、該当する未登録施設はありません — 主要属性が充実しています。'
+              : '現在の絞り込み条件に一致する施設はありません。'}
           </p>
           <button
             type="button"
@@ -153,6 +175,7 @@ export default function MobileListTab({ onOpenDetail }) {
             key={`${r.type}/${r.id}`}
             result={r}
             onOpen={(res) => onOpenDetail && onOpenDetail(res, 'list')}
+            showMissing={(resultFilters.missingFilter || 'none') !== 'none'}
           />
         ))}
       </div>

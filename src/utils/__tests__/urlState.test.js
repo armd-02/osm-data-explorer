@@ -143,3 +143,61 @@ describe('encodeStateToURL / decodeURLToState', () => {
     expect(decoded.municipalitySearch.purpose).toBe('暮らす')
   })
 })
+
+describe('encodeStateToURL / decodeURLToState: 一覧フィルタ (A2)', () => {
+  const baseFilters = { nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none', missingFilter: 'none' }
+  const baseState = {
+    searchMode: 'simple',
+    simpleSearch: { category: '', keyword: '', location: '', cuisine: '', purpose: '' },
+    resultFilters: baseFilters
+  }
+
+  it('アクティブなフィルタのみをエンコードする（デフォルト値は省略）', () => {
+    const state = { ...baseState, resultFilters: { ...baseFilters, nameFilter: 'coffee', missingFilter: 'phone' } }
+    const qs = encodeStateToURL(state)
+    expect(qs).toContain('nf=coffee')
+    expect(qs).toContain('mf=phone')
+    expect(qs).not.toContain('tf=')
+    expect(qs).not.toContain('wo=')
+    const decoded = decodeURLToState('?' + qs)
+    expect(decoded.resultFilters).toEqual({ nameFilter: 'coffee', missingFilter: 'phone' })
+  })
+
+  it('全フィルタパラメータがround-tripする', () => {
+    const state = { ...baseState, resultFilters: { nameFilter: 'test', typeFilter: 'way', websiteOnly: true, sortDir: 'desc', missingFilter: 'any' } }
+    const qs = encodeStateToURL(state)
+    const decoded = decodeURLToState('?' + qs)
+    expect(decoded.resultFilters).toEqual({ nameFilter: 'test', typeFilter: 'way', websiteOnly: true, sortDir: 'desc', missingFilter: 'any' })
+  })
+
+  it('catFilter/purposeFilter（フォームミラー）はエンコード対象外である', () => {
+    const state = { ...baseState, resultFilters: { ...baseFilters, catFilter: 'cafe', purposeFilter: '食べる' } }
+    const qs = encodeStateToURL(state)
+    expect(qs).not.toContain('cf=')
+    expect(qs).not.toContain('pf=')
+    expect(decodeURLToState('?' + qs)).toBeNull()
+  })
+
+  it('無効な値はデコード時に無視される', () => {
+    const p = new URLSearchParams({ cf: 'nope', mf: 'unknown', tf: 'point', pf: 'xyz' })
+    expect(decodeURLToState('?' + p.toString())).toBeNull()
+  })
+
+  it('旧形式の共有URL（フィルタパラメータなし）には影響しない', () => {
+    const decoded = decodeURLToState('?c=cafe&k=coffee')
+    expect(decoded.resultFilters).toBeUndefined()
+  })
+
+  it('自治体モードでもフィルタをエンコード・復元できる', () => {
+    const state = {
+      searchSource: 'municipality',
+      selectedMunicipality: { code: '27', name: '吹田市', bbox: null },
+      municipalitySearch: { category: 'cafe', keyword: '', cuisine: '', purpose: '' },
+      resultFilters: { ...baseFilters, nameFilter: 'スターバックス', missingFilter: 'website' }
+    }
+    const qs = encodeStateToURL(state)
+    const decoded = decodeURLToState('?' + qs)
+    expect(decoded.searchSource).toBe('municipality')
+    expect(decoded.resultFilters).toEqual({ nameFilter: 'スターバックス', missingFilter: 'website' })
+  })
+})

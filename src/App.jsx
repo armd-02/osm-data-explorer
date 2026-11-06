@@ -54,6 +54,8 @@ function App() {
       if (urlState.bbox) dispatch({ type: 'SET_BBOX', payload: urlState.bbox })
       if (urlState.selectedMunicipality) dispatch({ type: 'SET_MUNICIPALITY', payload: urlState.selectedMunicipality })
       if (urlState.municipalitySearch) dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: urlState.municipalitySearch })
+      // (A2) 一覧フィルタを最後に適用: 検索stateのミラー値を上書きし、URLを権威に
+      if (urlState.resultFilters) dispatch({ type: 'SET_RESULT_FILTERS', payload: urlState.resultFilters })
     }
   }, [dispatch])
 

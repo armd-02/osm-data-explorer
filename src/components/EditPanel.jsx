@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { getMapInstance } from '../hooks/useMapRef'
+import { buildIdMapUrl, buildNoteUrl } from '../utils/editLinks'
 
 /**
  * OSM編集・Note作成の導線
@@ -35,8 +36,9 @@ function EditPanel() {
   if (!showPanel && !expanded) return null
 
   const center = getCenter()
-  const idUrl = `https://www.openstreetmap.org/edit?node=map%2F${Math.round(center.zoom)}%2F${center.lon.toFixed(6)}%2F${center.lat.toFixed(6)}`
-  const noteUrl = `https://www.openstreetmap.org/notes/new?lat=${center.lat.toFixed(6)}&lon=${center.lon.toFixed(6)}`
+  // (B3) iD/Note導線URLは editLinks.js で共通化する
+  const idUrl = buildIdMapUrl(center.lat, center.lon, center.zoom)
+  const noteUrl = buildNoteUrl(center.lat, center.lon)
   const mapUrl = "https://www.openstreetmap.org/?mlat=" + center.lat.toFixed(6) + "&mlon=" + center.lon.toFixed(6) + "#map/" + center.zoom + "/" + center.lat.toFixed(4) + "/" + center.lon.toFixed(4)
 
   // Note文案のプレフィル
@@ -53,7 +55,10 @@ function EditPanel() {
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mx-3 mb-2">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm font-medium text-amber-800">📝 OSMデータの改善</span>
+        {/* (A4) 0件は「失敗」ではなく「まだ登録がない地域」として伝える */}
+        <span className="text-sm font-medium text-amber-800">
+          {showPanel ? '📝 この地域ではまだ登録がありません' : '📝 OSMデータの改善'}
+        </span>
         <button
           onClick={() => setExpanded(!expanded)}
           className="ml-auto text-[11px] text-amber-700 hover:text-amber-900"
@@ -63,9 +68,37 @@ function EditPanel() {
       </div>
 
       {!expanded ? (
-        <p className="text-xs text-amber-700">
-          検索結果が見つかりませんでした。OSMに未登録か、表記が異なる可能性があります。範囲を広げたり、カテゴリやキーワードを変えて再検索してください。
-        </p>
+        showPanel ? (
+          <div className="space-y-2">
+            <p className="text-xs text-amber-700">
+              検索結果が見つかりませんでした。この地域ではまだOSMにデータが登録されていない可能性があります。
+              新しい施設をOSMに追加するのは、あなたからかもしれません。
+            </p>
+            {/* (A4/B3) 編集・報告への即時ジャンプ（展開不要） */}
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={idUrl}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded font-medium"
+              >
+                ✏️ iDエディタで追加する
+              </a>
+              <a
+                href={noteUrl}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-amber-300 hover:bg-amber-100 text-amber-800 text-xs rounded font-medium"
+              >
+                📌 Noteで報告する
+              </a>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-700">
+            検索結果が見つかりませんでした。OSMに未登録か、表記が異なる可能性があります。範囲を広げたり、カテゴリやキーワードを変えて再検索してください。
+          </p>
+        )
       ) : (
         <div className="space-y-3">
           {/* 確認導線 */}

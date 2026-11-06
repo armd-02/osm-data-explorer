@@ -120,6 +120,33 @@ describe('MobileFacilityCard（#44 生活者目線デザイン）', () => {
   })
 })
 
+describe('MobileFacilityCard: カテゴリ別情報設計 (A3)', () => {
+  it('飲食店にはカテゴリに意味のあるcuisine属性を表示する', () => {
+    const r = { type: 'node', id: 30, name: '梅田ラーメン', tags: { amenity: 'restaurant', name: '梅田ラーメン', cuisine: 'ramen', opening_hours: '11:00-23:00' } }
+    render(<MobileFacilityCard result={r} onOpen={vi.fn()} />)
+    expect(screen.getByText(/🍴 ramen/)).toBeTruthy()
+    expect(screen.getByText(/11:00-23:00/)).toBeTruthy()
+  })
+
+  it('公共トイレには電話・Web・営業時間を出さない（意味のない属性を抑制）', () => {
+    const r = { type: 'node', id: 31, tags: { amenity: 'toilets', phone: '06-2222-2222', website: 'https://toilet.example', opening_hours: '24/7', 'addr:city': '北区', wheelchair: 'yes' } }
+    render(<MobileFacilityCard result={r} onOpen={vi.fn()} />)
+    expect(screen.getByText(/北区/)).toBeTruthy()
+    expect(screen.queryByText(/06-2222-2222/)).toBeNull()
+    expect(screen.queryByText(/公式サイト/)).toBeNull()
+    expect(screen.queryByText(/24\/7/)).toBeNull()
+    // wheelchairはバッジとして引き続き表示
+    expect(screen.getByText(/♿ 車椅子対応/)).toBeTruthy()
+  })
+
+  it('駅には営業時間属性を出さない', () => {
+    const r = { type: 'node', id: 32, name: 'テスト駅', tags: { railway: 'station', name: 'テスト駅', opening_hours: '05:00-24:00', 'addr:city': '吹田市' } }
+    render(<MobileFacilityCard result={r} onOpen={vi.fn()} />)
+    expect(screen.getByText(/吹田市/)).toBeTruthy()
+    expect(screen.queryByText(/05:00-24:00/)).toBeNull()
+  })
+})
+
 describe('facilityTypeLabel（日本語施設タイプ）', () => {
   it('主要タグ値を辞書で日本語化する', () => {
     expect(facilityTypeLabel({ tags: { amenity: 'cafe' } })).toBe('カフェ')

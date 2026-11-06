@@ -137,6 +137,24 @@ describe('MobileFacilityDetail', () => {
   })
 })
 
+describe('MobileFacilityDetail: iD編集導線 (B3)', () => {
+  it('フッターに「iDで編集」リンクがあり、要素ディープリンクを指す', () => {
+    renderDetail()
+    const dialog = screen.getByRole('dialog')
+    const idLink = within(dialog).getByRole('link', { name: /iDで編集/ })
+    expect(idLink.getAttribute('href')).toBe('https://www.openstreetmap.org/edit?node=node%2F1001')
+    expect(idLink.getAttribute('target')).toBe('_blank')
+    expect(idLink.getAttribute('rel')).toContain('noopener')
+  })
+
+  it('座標がない要素でもiDリンクは表示される', () => {
+    renderDetail({ type: 'way', id: 8, tags: { amenity: 'supermarket' } })
+    const dialog = screen.getByRole('dialog')
+    const idLink = within(dialog).getByRole('link', { name: /iDで編集/ })
+    expect(idLink.getAttribute('href')).toBe('https://www.openstreetmap.org/edit?node=way%2F8')
+  })
+})
+
 describe('MobileFacilityDetail: バリアフリー情報（#61）', () => {
   it('wheelchair=yes なら「車椅子対応」バッジが表示される', () => {
     renderDetail({

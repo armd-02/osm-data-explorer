@@ -32,7 +32,7 @@ export function createInitialState() {
     searchSource: 'map',
     selectedMunicipality: null,
     municipalitySearch: { category: '', keyword: '', cuisine: '', purpose: '' },
-    resultFilters: { nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none' }
+    resultFilters: { nameFilter: '', typeFilter: 'all', catFilter: '', purposeFilter: '', websiteOnly: false, sortDir: 'none', missingFilter: 'none' }
   }
 }
 

@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
 import CategoryPicker from './CategoryPicker'
+import PrefectureTileMap from './PrefectureTileMap'
 
 /**
  * (#44 生活者目線UI)
@@ -12,6 +13,7 @@ import CategoryPicker from './CategoryPicker'
  */
 export default function MunicipalitySearch({ variant = 'pc' }) {
   const isMobile = variant === 'mobile'
+  const prefSelectId = `pref-select-${variant}`
 
 /**
  * (#44) 自治体別施設検索
@@ -109,6 +111,13 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
     dispatch({ type: 'SET_MUNICIPALITY', payload: null })
   }
 
+  // ブロック地図（タイルグリッド）のタイル選択: select の onChange と同一の更新処理
+  const handlePrefSelect = (code) => {
+    setPrefCode(code)
+    setMunCode('')
+    dispatch({ type: 'SET_MUNICIPALITY', payload: null })
+  }
+
   // (#47) 市区町村選択を親stateに同期（検索ボタンのdisable判定・BBOX共有用）
   const handleMunChange = (e) => {
     const code = e.target.value
@@ -143,13 +152,22 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
 
   return (
     <div className="space-y-3">
-      {/* 都道府県選択 */}
+      {/* 都道府県選択: ブロック地図（タイルグリッド）から選択 */}
       <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの県で探す？' : '都道府県'}</label>
+        <label htmlFor={prefSelectId} className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの県で探す？' : '都道府県'}</label>
+        <PrefectureTileMap
+          prefectures={PREFECTURES}
+          value={prefCode}
+          onSelect={handlePrefSelect}
+          variant={isMobile ? 'mobile' : 'pc'}
+        />
+        {/* 従来のセレクトは視覚的に隠したまま残す（キーボード・スクリーンリーダーのフォールバック） */}
         <select
+          id={prefSelectId}
           value={prefCode}
           onChange={handlePrefChange}
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          className="sr-only"
+          aria-label="都道府県"
         >
           <option value="">選択してください</option>
           {PREFECTURES.map(p => (

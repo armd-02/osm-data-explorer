@@ -126,6 +126,157 @@ describe('ResultsPanel: カテゴリ選択=検索フォームと同期 (#44)', (
   })
 })
 
+describe('ResultsPanel: 属性の充足率表示 (B1)', () => {
+  const cafePhone = { type: 'node', id: 4, name: 'カフェC', tags: { amenity: 'cafe', phone: '06-0000-0000', opening_hours: 'Mo-Su 10:00-19:00', name: 'カフェC' } }
+  const cafeAddr = { type: 'node', id: 5, name: 'カフェD', tags: { amenity: 'cafe', 'addr:street': '西中条2-3-4', name: 'カフェD' } }
+
+  it('表示中結果の属性充足率が「あり X/Y件」で表示される', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [withWebsite, withoutWebsite, cafePhone, cafeAddr] }]} />)
+    expect(screen.getByText(/電話あり 1\/4件/)).toBeTruthy()
+    expect(screen.getByText(/営業時間あり 1\/4件/)).toBeTruthy()
+    expect(screen.getByText(/Webサイトあり 1\/4件/)).toBeTruthy()
+    expect(screen.getByText(/住所あり 1\/4件/)).toBeTruthy()
+  })
+
+  it('カテゴリで絞り込むと絞り込み後の件数で再計算される', () => {
+    const park = { type: 'node', id: 6, name: '中央公園', tags: { leisure: 'park', phone: '06-9999-9999', name: '中央公園' } }
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [withWebsite, withoutWebsite, park] }]} />)
+
+    const select = screen.getByRole('combobox', { name: '施設の種類で絞る' })
+    fireEvent.change(select, { target: { value: 'cafe' } })
+
+    // park が絞られ、充足率が残り2件ベースで再計算される
+    expect(screen.getByText(/電話あり 0\/2件/)).toBeTruthy()
+    expect(screen.getByText(/Webサイトあり 1\/2件/)).toBeTruthy()
+  })
+
+  it('結果が0件のときは充足率表示が出ない', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [] }] } />)
+    expect(screen.queryByText(/電話あり/)).toBeNull()
+  })
+})
+
+describe('ResultsPanel: 属性の欠落絞り込み (B2)', () => {
+  const cafeFull = { type: 'node', id: 10, name: '完全カフェ', tags: { amenity: 'cafe', name: '完全カフェ', phone: '06-1111-1111', opening_hours: 'Mo-Fr 09:00-17:00', website: 'https://full.example', 'addr:street': '梅田1-1' } }
+  const cafeNoPhone = { type: 'node', id: 11, name: '電話なしカフェ', tags: { amenity: 'cafe', name: '電話なしカフェ', opening_hours: 'Mo-Fr 09:00-17:00', website: 'https://nophone.example', 'addr:street': '梅田2-2' } }
+
+  it('「属性の欠落で絞る」selectが存在し、特定属性を選ぶと未登録の施設だけが残る', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [cafeFull, cafeNoPhone] }] } />)
+    const select = screen.getByRole('combobox', { name: '属性の欠落で絞る' })
+    expect(select.value).toBe('none')
+
+    fireEvent.change(select, { target: { value: 'phone' } })
+
+    // 電話が登録済みの完全カフェが除外される
+    expect(screen.queryByText('完全カフェ')).toBeNull()
+    expect(screen.getByText('電話なしカフェ')).toBeTruthy()
+    // 未登録属性バッジが表示される
+    expect(screen.getByText(/電話 未登録/)).toBeTruthy()
+  })
+
+  it('anyを選べば未登録がある施設だけが表示される', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [cafeFull, cafeNoPhone] }] } />)
+    fireEvent.change(screen.getByRole('combobox', { name: '属性の欠落で絞る' }), { target: { value: 'any' } })
+    expect(screen.queryByText('完全カフェ')).toBeNull()
+    expect(screen.getByText('電話なしカフェ')).toBeTruthy()
+  })
+
+  it('anyで全件が登録済みなら「主要属性が充実」として好機伝える (A4)', () => {
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: [cafeFull] },
+      { type: 'SET_RESULT_FILTERS', payload: { missingFilter: 'any' } }
+    ]} />)
+    // (A4) 未登録絞り込みで0件は「失敗」ではなく「充実」の好機
+    expect(screen.getByText(/主要属性が充実しています/)).toBeTruthy()
+    expect(screen.queryByText(/条件に一致する施設はありません/)).toBeNull()
+  })
+
+  it('欠落絞り込み中でも名称検索（nameFilter）が効く', () => {
+    // 両方ともWebサイト未登録（1つは名称に「電話」を含む）
+    const noWebA = { type: 'node', id: 12, name: '電話なしカフェ', tags: { amenity: 'cafe', name: '電話なしカフェ', phone: '06-3333-3333', opening_hours: 'Mo-Sa 10:00-20:00', 'addr:street': '西天満3-3' } }
+    const noWebB = { type: 'node', id: 13, name: 'サイトなしカフェ', tags: { amenity: 'cafe', name: 'サイトなしカフェ', 'addr:city': '大阪市' } }
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: [noWebA, noWebB] },
+      { type: 'SET_RESULT_FILTERS', payload: { missingFilter: 'website' } }
+    ]} />)
+
+    const nameInput = screen.getByPlaceholderText('名称で絞る（例: 珈琲）')
+    // 名称で「電話」に絞ると noWebA のみ
+    fireEvent.change(nameInput, { target: { value: '電話' } })
+    expect(screen.getByText('電話なしカフェ')).toBeTruthy()
+    expect(screen.queryByText('サイトなしカフェ')).toBeNull()
+  })
+})
+
+describe('ResultsPanel: iD編集導線 (B3)', () => {
+  it('各行に要素ディープリンク付きのiDリンクが表示される', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [withWebsite, withoutWebsite] }] } />)
+    const links = screen.getAllByRole('link', { name: /iD/ })
+    expect(links).toHaveLength(2)
+    expect(links[0].getAttribute('href')).toBe('https://www.openstreetmap.org/edit?node=node%2F1')
+    expect(links[1].getAttribute('href')).toBe('https://www.openstreetmap.org/edit?node=node%2F2')
+  })
+
+  it('「編集」列ヘッダーが表示される', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [withWebsite] }] } />)
+    expect(screen.getByText('編集')).toBeTruthy()
+  })
+
+  it('欠落絞り込み表示中も各行のiDリンクが残る（B2連携）', () => {
+    const cafeNoPhone = { type: 'node', id: 11, name: '電話なしカフェ', tags: { amenity: 'cafe', name: '電話なしカフェ', opening_hours: 'Mo-Fr 09:00-17:00', website: 'https://nophone.example', 'addr:street': '梅田2-2' } }
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: [cafeNoPhone] },
+      { type: 'SET_RESULT_FILTERS', payload: { missingFilter: 'phone' } }
+    ]} />)
+    // 欠落バッジ（B2）とiDリンク（B3）が同じ行に並ぶ
+    expect(screen.getByText(/電話 未登録/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: /iD/ }).getAttribute('href'))
+      .toBe('https://www.openstreetmap.org/edit?node=node%2F11')
+  })
+})
+
+describe('ResultsPanel: カテゴリ別ハイライト (A3)', () => {
+  it('飲食店には名称セルにcuisineハイライトを表示する', () => {
+    const ramen = { type: 'node', id: 40, name: '梅田ラーメン', tags: { amenity: 'restaurant', name: '梅田ラーメン', cuisine: 'ramen', opening_hours: '11:00-23:00' } }
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [ramen] }]} />)
+    expect(screen.getByText(/🍴 ramen/)).toBeTruthy()
+  })
+
+  it('公共施設にはwheelchairハイライトを表示する', () => {
+    const lib = { type: 'node', id: 41, name: '中央図書館', tags: { amenity: 'library', name: '中央図書館', opening_hours: 'Mo-Su 09:00-18:00', wheelchair: 'yes' } }
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [lib] }]} />)
+    // 名称セルのハイライト＋バリアフリー列のバッジの両方に出る
+    expect(screen.getAllByText(/♿ 車椅子対応/).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('追加属性のないカテゴリ（銀行等）ではハイライト行を出さない', () => {
+    const bank = { type: 'node', id: 42, name: 'テスト銀行', tags: { amenity: 'bank', name: 'テスト銀行', phone: '06-4444-4444' } }
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: [bank] }]} />)
+    expect(screen.queryByText(/🏦/)).toBeNull()
+  })
+})
+
+describe('ResultsPanel: 0件時の導線 (A4)', () => {
+  it('結果0件なら「この地域ではまだ登録がありません」＋iD追加ヒントを表示する', () => {
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: [] },
+      { type: 'SET_STATUS', payload: 'success' }
+    ]} />)
+    expect(screen.getByText(/この地域ではまだ登録がありません/)).toBeTruthy()
+    expect(screen.getByText(/iDエディタで追加できます/)).toBeTruthy()
+  })
+
+  it('未登録絞り込みで0件なら「主要属性が充実しています」として好機伝える', () => {
+    const complete = { type: 'node', id: 1, name: '充実カフェ', tags: { amenity: 'cafe', name: '充実カフェ', phone: '06-1111-1111', opening_hours: 'Mo-Su 08:00-20:00', website: 'https://complete.example', 'addr:street': '梅田1-1' } }
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: [complete] },
+      { type: 'SET_RESULT_FILTERS', payload: { missingFilter: 'any' } }
+    ]} />)
+    expect(screen.getByText(/主要属性が充実しています/)).toBeTruthy()
+    expect(screen.queryByText(/条件に一致する施設はありません/)).toBeNull()
+  })
+})
+
 describe('ResultsPanel: カテゴリ選択肢は取得データに基づいて絞り込まれる (#44)', () => {
   const park = { type: 'node', id: 3, name: '中央公園', tags: { leisure: 'park', name: '中央公園' } }
 

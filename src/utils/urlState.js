@@ -26,7 +26,51 @@ const PARAM_KEYS = {
   src: 'src',        // (#44) search source: m(unicipality) / m(ap)
   mun: 'mun',        // (#44) municipality code
   cuisine: 'cu',     // (#54) cuisine value (cuisine filter, food categories only)
-  purpose: 'p'       // (#44) purpose scope (食べる・遊ぶなど、カテゴリ未選択時の絞り込み)
+  purpose: 'p',      // (#44) purpose scope (食べる・遊ぶなど、カテゴリ未選択時の絞り込み)
+  // (A2) 一覧フィルタ（結果表示の絞り込み・並び替え）
+  // 注: catFilter/purposeFilter は検索フォームのミラーであり（reducerが
+  // syncCategoryFilters で再導出する）、ユーザーが直接設定できない。
+  // URLにエンコードしても再検索時にフォーム値で上書きされるため対象外。
+  nameFilter: 'nf',  // 施設名の部分一致
+  typeFilter: 'tf',  // OSM要素種別 (node/way/relation)
+  websiteOnly: 'wo', // 公式サイトありのみ (1)
+  missingFilter: 'mf', // (B2) 未登録属性絞り込み
+  sortDir: 'sd'      // 施設名並び替え (asc/desc)
+}
+
+// (A2) 復元時に許可する値
+const VALID_TYPES = ['node', 'way', 'relation']
+const VALID_MISSING = ['any', 'phone', 'opening_hours', 'website', 'address']
+
+/**
+ * (A2) 一覧フィルタをURLパラメータにエンコード
+ * デフォルト値は省略する（既存パラメータと同じ方針）。
+ */
+function appendResultFilters(params, rf) {
+  if (!rf) return
+  if ((rf.nameFilter || '').trim()) params.set(PARAM_KEYS.nameFilter, rf.nameFilter.trim())
+  if (rf.typeFilter && rf.typeFilter !== 'all') params.set(PARAM_KEYS.typeFilter, rf.typeFilter)
+  if (rf.websiteOnly) params.set(PARAM_KEYS.websiteOnly, '1')
+  if (rf.missingFilter && rf.missingFilter !== 'none') params.set(PARAM_KEYS.missingFilter, rf.missingFilter)
+  if (rf.sortDir && rf.sortDir !== 'none') params.set(PARAM_KEYS.sortDir, rf.sortDir)
+}
+
+/**
+ * (A2) URLパラメータから一覧フィルタを復元（無効値は無視）
+ * @returns {object} 存在するフィルタのみを含む部分オブジェクト（何もなければ {}）
+ */
+function readResultFilters(params) {
+  const rf = {}
+  const nf = (params.get(PARAM_KEYS.nameFilter) || '').trim()
+  if (nf) rf.nameFilter = nf
+  const tf = params.get(PARAM_KEYS.typeFilter)
+  if (tf && tf !== 'all' && VALID_TYPES.includes(tf)) rf.typeFilter = tf
+  if (params.get(PARAM_KEYS.websiteOnly) === '1') rf.websiteOnly = true
+  const mf = params.get(PARAM_KEYS.missingFilter)
+  if (mf && mf !== 'none' && VALID_MISSING.includes(mf)) rf.missingFilter = mf
+  const sd = params.get(PARAM_KEYS.sortDir)
+  if (sd === 'asc' || sd === 'desc') rf.sortDir = sd
+  return rf
 }
 
 /**
@@ -84,6 +128,9 @@ export function encodeStateToURL(state) {
     }
   }
   
+  // (A2) 一覧フィルタ（自治体モード・マップモードの両方に適用）
+  appendResultFilters(params, state.resultFilters)
+
   // Map state (BBOX)
   if (state.bbox) {
     const b = state.bbox
@@ -160,6 +207,13 @@ export function decodeURLToState(searchParams) {
       }
       hasData = true
     }
+  }
+
+  // (A2) 一覧フィルタ
+  const resultFilters = readResultFilters(params)
+  if (Object.keys(resultFilters).length > 0) {
+    state.resultFilters = resultFilters
+    hasData = true
   }
 
   // BBOX (with validation)

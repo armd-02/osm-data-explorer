@@ -6,6 +6,8 @@ import {
   facilityTypeLabel
 } from '../../utils/facilityLabels'
 import { wheelchairBadge } from '../../utils/accessibility'
+import { keyInfoFor } from '../../utils/categoryProfiles'
+import { missingAttributesOf, ATTRIBUTE_LABELS } from '../../utils/statistics'
 
 // テスト・他コンポーネントの互換のために再エクスポート
 export { facilityName, formatAddress, safeWebsite }
@@ -16,20 +18,20 @@ export { facilityName, formatAddress, safeWebsite }
  * 生活者目線UI（#44）: 生活者の言葉で施設を表示する。
  *   - 施設名（name / name:ja）
  *   - 施設タイプ（日本語ラベル: 「カフェ」「公園」「駅」など）
- *   - 住所 / 電話 / 公式サイト / 営業時間（OSMに未登録なら表示しない。捏造しない）
+ *   - (A3) カテゴリ別情報設計: カテゴリごとに意味のある属性（keyInfoFor の
+ *     プロファイル）の順に、登録済みの情報のみ表示する。
+ *     例: 飲食店→営業時間・料理、公共施設→バリアフリー、トイレ→車椅子のみ。
  * OSM生データ（node/way、amenity=cafe、OSM ID）はカードの主表示にしない。
  * 詳細（OSM ID・全タグ）は施設詳細ボトムシート（MobileFacilityDetail）に退ける。
  *
  * カード全体がボタン（タップで詳細シート）。未登録フィールドは行ごとに出さない。
  */
-export default function MobileFacilityCard({ result, onOpen }) {
+export default function MobileFacilityCard({ result, onOpen, showMissing = false }) {
   const tags = result.tags || {}
   const name = facilityName(result)
   const typeLabel = facilityTypeLabel(result)
-  const address = formatAddress(tags)
-  const phone = tags.phone || tags['contact:phone'] || ''
-  const website = safeWebsite(tags)
-  const openingHours = tags.opening_hours || ''
+  // (A3) カテゴリプロファイルに基づく属性行（wheelchair はバッジとして別途表示）
+  const profileItems = keyInfoFor(result).items.filter((it) => it.key !== 'wheelchair')
   const wcBadge = wheelchairBadge(tags)
 
   return (
@@ -45,17 +47,29 @@ export default function MobileFacilityCard({ result, onOpen }) {
         </span>
       </div>
 
-      {address && <p className="text-xs text-slate-600">📍 {address}</p>}
-      {phone && <p className="text-xs text-slate-600">📞 {phone}</p>}
+      {profileItems.map((it) => (
+        <p
+          key={it.key}
+          className={it.key === 'website' ? 'text-xs text-primary-600' : 'text-xs text-slate-600'}
+        >
+          {it.text}
+        </p>
+      ))}
       {wcBadge && (
         <p className={`text-[11px] border rounded-md px-2 py-0.5 inline-block ${wcBadge.cls}`}>
           ♿ {wcBadge.text}
         </p>
       )}
-      {openingHours && <p className="text-xs text-slate-600">🕐 {openingHours}</p>}
-      {website && (
-        <p className="text-xs text-primary-600">🌐 公式サイト（詳細で開けます）</p>
-      )}
+      {/* (B2) 欠落フィルタアクティブ時: 未登録の主要属性を表示 */}
+      {showMissing && (() => {
+        const missing = missingAttributesOf(result)
+        if (missing.length === 0) return null
+        return (
+          <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-md px-2 py-0.5">
+            ⚠️ {missing.map((k) => ATTRIBUTE_LABELS[k]).join('・')} 未登録
+          </p>
+        )
+      })()}
     </button>
   )
 }

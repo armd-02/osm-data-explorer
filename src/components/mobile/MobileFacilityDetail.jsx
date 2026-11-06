@@ -1,6 +1,7 @@
 import React from 'react'
 import { facilityName, formatAddress, safeWebsite } from '../../utils/facilityLabels'
 import { parseAccessibility } from '../../utils/accessibility'
+import { buildIdElementUrl, buildOsmElementUrl } from '../../utils/editLinks'
 
 /**
  * (#59 / #61) 施設詳細ボトムシート
@@ -96,7 +97,7 @@ export default function MobileFacilityDetail({ detail, onClose, onShowOnMap }) {
           )}
 
           <a
-            href={`https://www.openstreetmap.org/${result.type}/${result.id}`}
+            href={buildOsmElementUrl(result)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-xs text-primary-600"
@@ -131,6 +132,16 @@ export default function MobileFacilityDetail({ detail, onClose, onShowOnMap }) {
               地図で見る
             </button>
           )}
+          {/* (B3) iD編集導線: 対象施設を特定した状態でiDへジャンプ */}
+          <a
+            href={buildIdElementUrl(result)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 min-h-[44px] px-4 flex items-center justify-center bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg"
+            title="iDエディタで編集（OSMアカウント必要）"
+          >
+            ✏️ iDで編集
+          </a>
           <button
             type="button"
             onClick={onClose}

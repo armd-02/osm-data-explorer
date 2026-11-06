@@ -36,8 +36,8 @@ function ShareButton() {
       {/* トゥールチップ */}
       {!copied && (
         <div className="absolute top-full left-0 mt-1 w-56 bg-slate-800 text-white text-[10px] rounded px-2 py-1.5 opacity-0 pointer-events-none transition-opacity hover:opacity-100 group-hover:opacity-100">
-          現在の検索条件をURLにエンコードします。
-          <br/>※ 共有URLを開いても同じ条件で検索できますが、
+          現在の検索条件・一覧フィルタをURLにエンコードします。
+          <br/>※ 共有URLを開いても同じ条件・絞り込みで検索できますが、
           <br/>OSMデータは常時更新されるため結果は異なる場合があります。
         </div>
       )}
