@@ -69,7 +69,7 @@ export const TILE_GRID = {
   '47': [13, 0]  // 沖縄県（島なので隅に配置）
 }
 
-const CELL = 56
+export const CELL = 56
 const GAP = 6
 const STEP = CELL + GAP
 
@@ -183,14 +183,36 @@ export default function PrefectureTileMap({
     </svg>
   )
 
-  // モバイル: タップサイズを確保するため固定幅で描き、コンテナ内スクロール表示
+  /**
+   * モバイル: コンテナ幅100%・高さ自動で縮小表示し、横スクロールを出さない。
+   *
+   * 従来は固定幅520px + overflow-auto スクロール枠だったため、実機の画面幅
+   * （320〜430px程度）より広く横にはみ出し、東京などのタイルが右端で切れる
+   * 状態だった。固定幅・overflow指定を撤廃して w-full 化し、幅上限300pxで
+   * タイルサイズを≒45px（タップ可能な40〜45px帯）に揃える。
+   *
+   * 高さは viewBox の縦横比で自動決定（幅300pxで≒700px）。縦方向は親タブの
+   * overflow-y-auto に委ねる（フレーム内スクロールは設けない）。
+   * タイル配置（TILE_GRID）と選択挙動は変更しない。
+   */
   if (variant === 'mobile') {
-    return (
-      <div className="overflow-auto max-h-[380px] rounded-lg border border-slate-200 bg-slate-50">
-        {renderSvg('block', { width: 520 })}
-      </div>
-    )
+    return renderSvg('block w-full h-auto max-w-[300px] mx-auto', undefined)
   }
 
-  return renderSvg('w-full h-auto', undefined)
+  /**
+   * PC: 最大幅を制限して中央寄せにする。
+   *
+   * グリッドは縦長（14行×6列、viewBox 372×868、高さ≒幅の2.33倍）なので、
+   * 幅のみを w-full にすると広い画面で地図全体が巨大化し、1タイル（北海道）が
+   * 画面の大部分を占める状態になっていた。
+   *
+   * max-w 300px とすると実寸は 幅≤300px・高さ≤700px となり、
+   * 47都道府県すべてが標準的な画面（高さ768px以上）にスクロールなしで収まる。
+   * 幅300pxでの1タイルは≒45pxでタップ・クリックに十分なサイズを維持できる。
+   *
+   * 狭い画面（コンテナ幅 < 300px）では w-full が効き従来どおり画面幅いっぱい。
+   * block + mx-auto で中央寄せ（インライン要素ではauto marginが効かない）。
+   * タイル配置（TILE_GRID）と選択挙動は変更しない。
+   */
+  return renderSvg('block w-full h-auto max-w-[300px] mx-auto', undefined)
 }

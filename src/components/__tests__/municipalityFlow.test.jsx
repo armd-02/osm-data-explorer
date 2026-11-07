@@ -29,37 +29,14 @@ import App from '../../App'
 import { clearCache } from '../../utils/overpass'
 import { CATEGORY_GROUPS, getCategoriesForPurpose } from '../../data/categories'
 
-// Leafletはjsdomで初期化できないため完全にモックする
-// 注: vi.mockファクトリはファイル先頭にhoistされるため、
-// トップレベル変数を参照せずファクトリ内で定義する。
-// MapView.jsxはdefault import（import L from 'leaflet'）を使うためdefaultエクスポートが必須。
-vi.mock('leaflet', () => {
-  const bounds = {
-    pad: () => bounds,
-    getSouth: () => 34.8, getWest: () => 135.4, getNorth: () => 34.9, getEast: () => 135.6
-  }
-  // チェーン可能レイヤモック（.addTo(map)・.bindPopup() 等のチェーンに対応）
-  const layer = {
-    addTo: () => layer, remove: () => {}, on: () => layer, off: () => {},
-    bindPopup: () => layer, openPopup: () => {}, bindTooltip: () => layer,
-    setIcon: () => layer, setLatLng: () => {}, getElement: () => null
-  }
-  const map = {
-    setView: () => {}, on: () => {}, off: () => {}, add: () => {}, remove: () => {},
-    removeLayer: () => {}, fitBounds: () => {}, panTo: () => {},
-    getBounds: () => bounds, getZoom: () => 12,
-    getCenter: () => ({ lat: 34.85, lng: 135.5 }),
-    latLngToContainerPoint: () => ({ x: 0, y: 0 }), getPixelBounds: () => ({})
-  }
-  const api = {
-    map: () => map,
-    tileLayer: () => ({ ...layer }),
-    latLngBounds: () => bounds,
-    rectangle: () => layer,
-    marker: () => layer,
-    divIcon: () => ({})
-  }
-  return { ...api, default: api }
+// MapLibre GLはWebGLが必要でjsdomでは初期化できないためモジュール全体をモックする。
+// vi.mockファクトリはファイル先頭にホイスされるため、共通モックは動的importで参照。
+// マップインスタンスの操作は mockState.api._state.maps から取得できる。
+const mockState = vi.hoisted(() => ({ api: null }))
+vi.mock('maplibre-gl', async () => {
+  const mod = await import('../../test/maplibreMock')
+  mockState.api = mod.createMapLibreMock()
+  return { default: mockState.api }
 })
 
 // jsdomにないAPIのスタブ
@@ -69,6 +46,7 @@ beforeEach(() => {
   if (!window.matchMedia) {
     window.matchMedia = () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
   }
+  if (mockState.api) mockState.api.resetState()
 })
 
 /**

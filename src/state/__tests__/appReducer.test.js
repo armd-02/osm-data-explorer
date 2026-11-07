@@ -169,3 +169,34 @@ describe('SET_RESULT_FILTERS (A2)', () => {
     expect(s.resultFilters.nameFilter).toBe('コーヒー')
   })
 })
+
+describe('SET_BBOX / bboxSource (Task 2)', () => {
+  it('素のBBOX（検索由来）は bboxSource="search" として記録される', () => {
+    let s = createInitialState()
+    s = appReducer(s, { type: 'SET_BBOX', payload: { south: 34.7, west: 135.48, north: 34.71, east: 135.49 } })
+    expect(s.bbox).toEqual({ south: 34.7, west: 135.48, north: 34.71, east: 135.49 })
+    expect(s.bboxSource).toBe('search')
+  })
+
+  it('source="url" のpayloadは bbox本体からsourceを切り離し bboxSource="url" として記録される', () => {
+    let s = createInitialState()
+    s = appReducer(s, { type: 'SET_BBOX', payload: { south: 35.68, west: 139.75, north: 35.7, east: 139.78, source: 'url' } })
+    expect(s.bbox).toEqual({ south: 35.68, west: 139.75, north: 35.7, east: 139.78 })
+    expect(s.bbox).not.toHaveProperty('source')
+    expect(s.bboxSource).toBe('url')
+  })
+
+  it('null payloadで bbox/bboxSource がクリアされる', () => {
+    let s = createInitialState()
+    s = appReducer(s, { type: 'SET_BBOX', payload: { south: 34.7, west: 135.48, north: 34.71, east: 135.49, source: 'url' } })
+    s = appReducer(s, { type: 'SET_BBOX', payload: null })
+    expect(s.bbox).toBeNull()
+    expect(s.bboxSource).toBeNull()
+  })
+
+  it('初期stateでは bbox/bboxSource がnull', () => {
+    const s = createInitialState()
+    expect(s.bbox).toBeNull()
+    expect(s.bboxSource).toBeNull()
+  })
+})

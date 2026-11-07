@@ -90,6 +90,27 @@ describe('boundsToBbox', () => {
   it('null boundsはnullを返す', () => {
     expect(boundsToBbox(null)).toBeNull()
   })
+
+  it('MapLibre LngLatBounds形式（{_southWest, _northEast}）からBBOXを返す', () => {
+    const bounds = {
+      pad: () => bounds,
+      _southWest: { lat: 34.7, lng: 135.5 },
+      _northEast: { lat: 34.72, lng: 135.52 }
+    }
+    expect(boundsToBbox(bounds)).toEqual(VALID_BBOX)
+  })
+
+  it('MapLibre形式の縮退bounds（sw == ne）はnullを返す', () => {
+    const bounds = {
+      _southWest: { lat: 34.69363839631074, lng: 135.50228118896487 },
+      _northEast: { lat: 34.69363839631074, lng: 135.50228118896487 }
+    }
+    expect(boundsToBbox(bounds)).toBeNull()
+  })
+
+  it('未知の形式（LeafletでもMapLibreでもない）はnullを返す', () => {
+    expect(boundsToBbox({ foo: 1 })).toBeNull()
+  })
 })
 
 describe('resolveSearchBbox', () => {

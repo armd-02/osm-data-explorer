@@ -14,36 +14,16 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import App from '../../App'
-import PrefectureTileMap, { TILE_GRID } from '../PrefectureTileMap'
+import PrefectureTileMap, { TILE_GRID, CELL } from '../PrefectureTileMap'
 import { clearCache } from '../../utils/overpass'
 
-// Leafletはjsdomで初期化できないため完全にモックする（municipalityFlow.test.jsx と同一）
-vi.mock('leaflet', () => {
-  const bounds = {
-    pad: () => bounds,
-    getSouth: () => 34.8, getWest: () => 135.4, getNorth: () => 34.9, getEast: () => 135.6
-  }
-  const layer = {
-    addTo: () => layer, remove: () => {}, on: () => layer, off: () => {},
-    bindPopup: () => layer, openPopup: () => {}, bindTooltip: () => layer,
-    setIcon: () => layer, setLatLng: () => {}, getElement: () => null
-  }
-  const map = {
-    setView: () => {}, on: () => {}, off: () => {}, add: () => {}, remove: () => {},
-    removeLayer: () => {}, fitBounds: () => {}, panTo: () => {},
-    getBounds: () => bounds, getZoom: () => 12,
-    getCenter: () => ({ lat: 34.85, lng: 135.5 }),
-    latLngToContainerPoint: () => ({ x: 0, y: 0 }), getPixelBounds: () => ({})
-  }
-  const api = {
-    map: () => map,
-    tileLayer: () => ({ ...layer }),
-    latLngBounds: () => bounds,
-    rectangle: () => layer,
-    marker: () => layer,
-    divIcon: () => ({})
-  }
-  return { ...api, default: api }
+// MapLibre GLはWebGLが必要でjsdomでは初期化できないためモジュール全体をモックする。
+// vi.mockファクトリはファイル先頭にホイスされるため、共通モックは動的importで参照。
+const mockState = vi.hoisted(() => ({ api: null }))
+vi.mock('maplibre-gl', async () => {
+  const mod = await import('../../test/maplibreMock')
+  mockState.api = mod.createMapLibreMock()
+  return { default: mockState.api }
 })
 
 class MockResizeObserver { observe() {} unobserve() {} disconnect() {} }
@@ -52,6 +32,7 @@ beforeEach(() => {
   if (!window.matchMedia) {
     window.matchMedia = () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
   }
+  if (mockState.api) mockState.api.resetState()
 })
 
 // ---- fixture ----
@@ -199,13 +180,60 @@ describe('PrefectureTileMap（コンポーネント）', () => {
     expect(baseTile.querySelector('rect').getAttribute('fill')).toBe('#f1f5f9')
   })
 
-  it('mobile variant はスクロール可能コンテナ内に描画される', () => {
+  it('mobile variant: 横スクロールなし — コンテナ幅に収まる縮小表示', () => {
     const { container } = render(
       <PrefectureTileMap prefectures={PREFS} value="" onSelect={() => {}} variant="mobile" />
     )
-    const wrap = container.querySelector('.overflow-auto')
-    expect(wrap).toBeTruthy()
-    expect(wrap.querySelector('svg')).toBeTruthy()
+    const svg = container.querySelector('svg')
+    expect(svg).toBeTruthy()
+    const cls = svg.getAttribute('class') || ''
+    // 画面幅いっぱいの縮小表示 + 幅上限（タイルサイズ40〜45px帯）+ 中央寄せ
+    expect(cls).toContain('w-full')
+    expect(cls).toContain('max-w-[300px]')
+    expect(cls).toContain('mx-auto')
+    expect(cls).toContain('block')
+    // 横はみ出しの原因だった固定幅・overflow指定が残っていない
+    expect(svg.style.width).toBe('')
+    expect(container.querySelector('.overflow-auto')).toBeNull()
+    expect(container.querySelector('.max-h-\\[380px\\]')).toBeNull()
+  })
+
+  it('mobile variant: タイルサイズは約40〜45px（タップ可能サイズを維持）', () => {
+    const all47 = Object.entries(TILE_GRID).map(([code]) => ({ code, name: `県${code}` }))
+    const { container } = render(
+      <PrefectureTileMap prefectures={all47} value="" onSelect={() => {}} variant="mobile" />
+    )
+    const svg = container.querySelector('svg')
+    const [, , w] = svg.getAttribute('viewBox').split(' ').map(Number)
+    // 幅が上限300pxの時の実寸タイルサイズ（viewBox内のCELL=56をスケール換算）
+    const tileSize = 300 * (CELL / w)
+    expect(tileSize).toBeGreaterThanOrEqual(40)
+    expect(tileSize).toBeLessThanOrEqual(45.5) // 約40〜45px
+  })
+
+  it('pc variant: SVGは最大幅制限+中央寄せ（広い画面で巨大化しない）', () => {
+    const { container } = render(
+      <PrefectureTileMap prefectures={PREFS} value="" onSelect={() => {}} variant="pc" />
+    )
+    const cls = container.querySelector('svg').getAttribute('class') || ''
+    expect(cls).toContain('max-w-[300px]') // 幅の上限
+    expect(cls).toContain('mx-auto')       // 中央寄せ
+    expect(cls).toContain('w-full')        // 狭い画面では従来どおり画面幅いっぱい
+    expect(cls).toContain('block')         // auto marginによる中央寄せにはblock必須
+  })
+
+  it('実寸で47都道府県がスクロールなしで1画面に収まる（幅上限時の高さが700px以下）', () => {
+    // 47都道府県すべて（名前はダミーでよい。重要なのはTILE_GRID配置）
+    const all47 = Object.entries(TILE_GRID).map(([code]) => ({ code, name: `県${code}` }))
+    const { container } = render(
+      <PrefectureTileMap prefectures={all47} value="" onSelect={() => {}} variant="pc" />
+    )
+    const svg = container.querySelector('svg')
+    const [, , w, h] = svg.getAttribute('viewBox').split(' ').map(Number)
+    // 幅が上限300pxの時の実寸高さ（viewBoxの縦横比を維持してスケール）
+    const renderedHeight = 300 * (h / w)
+    // 標準的な画面（高さ768px以上、ブラウザUIを除いた表示域≒700〜720px）に収まる
+    expect(renderedHeight).toBeLessThanOrEqual(700)
   })
 })
 

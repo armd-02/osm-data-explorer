@@ -1,7 +1,7 @@
 /**
  * 検索BBOXの解決ロジック (#41)
  *
- * 地図表示範囲（Leaflet Bounds）と前回検索範囲（state.bbox）から、
+ * 地図表示範囲（MapLibre LngLatBounds）と前回検索範囲（state.bbox）から、
  * 検索に使用するBBOXを決定する。
  *
  * 優先順:
@@ -39,17 +39,40 @@ export function isValidBbox(bbox) {
 }
 
 /**
- * Leaflet LatLngBoundsからBBOXオブジェクトを生成
- * @param {object} bounds - Leaflet LatLngBounds (getSouth/getNorth/getWest/getEast)
+ * 地図のBoundsからBBOXオブジェクトを生成
+ *
+ * 対応形式:
+ * - MapLibre LngLatBounds: {_southWest: {lat, lng}, _northEast: {lat, lng}}
+ *   （map.getBounds()の戻り値。実APIはこの形式）
+ * - Leaflet LatLngBounds: getSouth()/getWest()/getNorth()/getEast()
+ *   （旧実装・テストフィクスチャとの互換）
+ *
+ * @param {object} bounds
  * @returns {{south, west, north, east}|null} 無効（縮退・逆順・NaN）ならnull
  */
 export function boundsToBbox(bounds) {
   if (!bounds) return null
-  const bbox = {
-    south: bounds.getSouth(),
-    west: bounds.getWest(),
-    north: bounds.getNorth(),
-    east: bounds.getEast()
+  let bbox
+  if (typeof bounds.getSouth === 'function') {
+    // Leaflet形式
+    bbox = {
+      south: bounds.getSouth(),
+      west: bounds.getWest(),
+      north: bounds.getNorth(),
+      east: bounds.getEast()
+    }
+  } else if (bounds._southWest && bounds._northEast) {
+    // MapLibre形式: _southWest{lng,lat} / _northEast{lng,lat}
+    const sw = bounds._southWest
+    const ne = bounds._northEast
+    bbox = {
+      south: sw.lat,
+      west: Math.min(sw.lng, ne.lng),
+      north: ne.lat,
+      east: Math.max(sw.lng, ne.lng)
+    }
+  } else {
+    return null
   }
   // 非表示（サイズ0）の地図コンテナからgetBounds()で得られる縮退BBOXは
   // Overpassが拒否するため、未設定として扱う
@@ -59,7 +82,7 @@ export function boundsToBbox(bounds) {
 /**
  * 検索に使用するBBOXを決定
  * @param {object|null} stateBbox - 前回確定BBOX {south, west, north, east}
- * @param {object|null} mapBounds - Leaflet LatLngBounds（地図表示範囲）
+ * @param {object|null} mapBounds - 地図表示範囲（MapLibre LngLatBounds）
  * @returns {object|null} 検索用BBOX、またはnull
  */
 export function resolveSearchBbox(stateBbox, mapBounds) {

@@ -31,11 +31,91 @@
   stroke: #1e40af;
 }
 
-/* Leaflet map container */
-.leaflet-container {
+/* MapLibre map container */
+.maplibregl-map {
   width: 100%;
   height: 100%;
   z-index: 0;
+}
+
+/* 地図ポップアップ（#38: 全テキストはtextContentで生成するDOMノード） */
+.maplibregl-popup-content {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.map-popup-root {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 150px;
+  max-width: 220px;
+}
+.map-popup-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: #1e293b;
+}
+.map-popup-meta {
+  color: #64748b;
+  font-size: 11px;
+}
+.map-popup-wc {
+  color: #047857;
+  font-size: 11px;
+}
+.map-popup-links {
+  display: flex;
+  gap: 6px;
+}
+.map-popup-link {
+  color: #2563eb;
+  font-size: 11px;
+  text-decoration: none;
+}
+.map-popup-link:hover {
+  text-decoration: underline;
+}
+.map-popup-tag {
+  color: #555555;
+  font-size: 11px;
+}
+.geocode-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.geocode-popup strong {
+  font-size: 12px;
+}
+.geocode-popup small {
+  color: #666666;
+  font-size: 10px;
+}
+
+/* マーカー（プレーンDOM要素） */
+.geocode-marker {
+  width: 16px;
+  height: 16px;
+  background: #2563eb;
+  border-radius: 50%;
+  border: 3px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.map-highlight-marker {
+  width: 16px;
+  height: 16px;
+  background: #f59e0b;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.batch-map-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* Custom scrollbar */

@@ -26,7 +26,7 @@ function fail(reason, message, suggestion) {
  * 検索条件のスナップショットを生成
  * @param {object} state - AppContext の検索関連 state（その時点の値）
  * @param {object} [options]
- * @param {object|null} [options.mapBounds] - Leaflet LatLngBounds（地図表示範囲）
+ * @param {object|null} [options.mapBounds] - MapLibre LngLatBounds（地図表示範囲。Leaflet形式も後方互換で対応）
  * @param {object|null} [options.bboxOverride] - 地図モードで使用するBBOXを上書き
  * @returns {object} criteria（上記の戻り値形式）
  */

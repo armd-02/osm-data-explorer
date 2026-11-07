@@ -22,6 +22,9 @@ export function createInitialState() {
     simpleSearch: { category: '', keyword: '', location: '', cuisine: '', purpose: '' },
     advancedSearch: { tags: [], keyword: '', useAnd: true },
     bbox: null,
+    // (Task 2) bboxの来源: 'url'（URL復元）| 'search'（検索実行）| null
+    // MapViewは 'url' の場合のみカメラfitを行う（検索後はカメラを動かさない）
+    bboxSource: null,
     status: 'idle',
     results: [],
     error: null,
@@ -86,8 +89,21 @@ export function appReducer(state, action) {
     }
     case 'SET_ADVANCED_SEARCH':
       return { ...state, advancedSearch: { ...state.advancedSearch, ...action.payload } }
-    case 'SET_BBOX':
-      return { ...state, bbox: action.payload }
+    case 'SET_BBOX': {
+      // payloadが {south,west,north,east,source:'url'} の場合、sourceを
+      // bbox本体から切り離して bboxSource として保持する。
+      // 素のBBOX（検索）の場合は bboxSource='search'。
+      const payload = action.payload
+      if (!payload || typeof payload !== 'object') {
+        return { ...state, bbox: null, bboxSource: null }
+      }
+      const { source, ...bboxFields } = payload
+      return {
+        ...state,
+        bbox: bboxFields.south !== undefined ? bboxFields : null,
+        bboxSource: source || 'search'
+      }
+    }
     case 'SET_STATUS':
       return { ...state, status: action.payload }
     case 'SET_RESULTS':

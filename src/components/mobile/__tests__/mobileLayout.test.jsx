@@ -19,74 +19,14 @@ import { CATEGORY_GROUPS, getCategoriesForPurpose } from '../../../data/categori
 // - 自治体モード検索
 // - エラー時: バannerがタブ切替をまたいで表示される
 //
-// Leaflet は jsdom では初期化できないためモジュール全体をモックする。
-vi.mock('leaflet', () => {
-  function makeLayer(kind) {
-    const layer = {
-      kind,
-      handlers: {},
-      addTo(map) {
-        if (map && Array.isArray(map.layers)) map.layers.push(layer)
-        return layer
-      },
-      remove() { return layer },
-      on(evt, cb) { layer.handlers[evt] = cb; return layer },
-      off() { return layer },
-      bindPopup() { return layer },
-      openPopup() { return layer },
-      bindTooltip() { return layer },
-      setIcon() { return layer },
-      setLatLng() { return layer },
-      getElement() { return null },
-    }
-    return layer
-  }
-  const pt = (p) => (Array.isArray(p) ? p : [p.lat, p.lng])
-  function makeBounds(sw, ne) {
-    const s = sw ? pt(sw) : [34.8, 135.4]
-    const n = ne ? pt(ne) : [34.9, 135.6]
-    return {
-      pad: () => bounds,
-      getSouth: () => s[0],
-      getWest: () => s[1],
-      getNorth: () => n[0],
-      getEast: () => n[1],
-    }
-  }
-  const bounds = makeBounds(null, null)
-  function makeMap() {
-    const map = {
-      layers: [],
-      handlers: {},
-      center: [34.6937, 135.5023],
-      zoom: 13,
-      setView(c) { map.center = c; return map },
-      setZoom(z) { map.zoom = z; return map },
-      getZoom: () => map.zoom,
-      getCenter: () => ({ lat: map.center[0], lng: map.center[1] }),
-      getBounds: () => bounds,
-      on(evt, cb) { map.handlers[evt] = cb; return map },
-      off() { return map },
-      addLayer(l) { map.layers.push(l); return map },
-      removeLayer() { return map },
-      fitBounds() { return map },
-      panTo(target) { map.panToCalls = map.panToCalls || []; map.panToCalls.push(target); return map },
-      invalidateSize() { return map },
-      latLngToContainerPoint: () => ({ x: 0, y: 0 }),
-      getPixelBounds: () => ({}),
-      remove() {},
-    }
-    return map
-  }
-  const api = {
-    map: makeMap,
-    tileLayer: () => makeLayer('tile'),
-    latLngBounds: makeBounds,
-    rectangle: () => makeLayer('rect'),
-    marker: () => makeLayer('marker'),
-    divIcon: () => ({}),
-  }
-  return { ...api, default: api }
+// MapLibre GLはWebGLが必要でjsdomでは初期化できないためモジュール全体をモックする。
+// vi.mockファクトリはファイル先頭にホイスされるため、共通モックは動的importで参照。
+// マップインスタンスの操作は mockState.api._state.maps から取得できる。
+const mockState = vi.hoisted(() => ({ api: null }))
+vi.mock('maplibre-gl', async () => {
+  const mod = await import('../../../test/maplibreMock')
+  mockState.api = mod.createMapLibreMock()
+  return { default: mockState.api }
 })
 
 // ===== テスト用データ =====
@@ -222,6 +162,7 @@ async function selectMunicipality(prefText, munText, prefLabel = '都道府県',
 beforeEach(() => {
   mediaMatches = true
   setupMatchMedia()
+  if (mockState.api) mockState.api.resetState()
   globalThis.ResizeObserver = class {
     observe() {}
     unobserve() {}
@@ -358,8 +299,8 @@ describe('(#59/#60) 検索タブ: 地図の明示的な検索トリガー', () =
     const map = getMapInstance()
     expect(map).toBeTruthy()
     act(() => {
-      if (map.handlers.moveend) map.handlers.moveend()
-      if (map.handlers.zoomend) map.handlers.zoomend()
+      map.fire('moveend')
+      map.fire('zoomend')
     })
     expect(overpassCalls).toHaveLength(0)
 
@@ -386,18 +327,23 @@ describe('(#59/#60) 検索タブ: 地図の明示的な検索トリガー', () =
     }, { timeout: 8000 })
     clickTab('検索')
 
-    // 結果が検索タブの地図マーカーに反映されるまで待つ
-    // （モックのremoveLayerはno-opのため再レンダリングで層が累積し得る → 「3件以上」で判定）
+    // 結果が地図のクラスタリングGeoJSONに反映されるまで待つ
     await waitFor(() => {
       const map = getMapInstance()
-      const markers = map.layers.filter((l) => l.kind === 'marker' && l.handlers.click)
-      expect(markers.length).toBeGreaterThanOrEqual(3)
+      const features = map._lastGeoJSON?.data?.features || []
+      expect(features.length).toBeGreaterThanOrEqual(3)
     }, { timeout: 8000 })
 
-    // 最初のマーカー（テスト珈琲店）をタップ
+    // 最初のマーカー（テスト珈琲店 node/1001）をタップ → pointレイヤのclickイベントを発火
     const map = getMapInstance()
-    const marker = map.layers.find((l) => l.kind === 'marker' && l.handlers.click)
-    marker.handlers.click()
+    const feature = map._lastGeoJSON.data.features.find((f) => f.properties.key === 'node/1001')
+    expect(feature).toBeTruthy()
+    act(() => {
+      map.fire('click', 'point-circle', {
+        features: [feature],
+        lngLat: { lat: feature.geometry.coordinates[1], lng: feature.geometry.coordinates[0] }
+      })
+    })
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /施設詳細: テスト珈琲店/ })).toBeTruthy()
@@ -445,14 +391,20 @@ describe('(#59) 施設カード→詳細ボトムシート→地図で見る', (
     // (#60) activeResultId経由で地図が施設（テスト珈琲店 34.85,135.5）へパンする
     const map0 = getMapInstance()
     await waitFor(() => {
-      expect(map0.panToCalls.some((t) => Array.isArray(t) && t[0] === 34.85 && t[1] === 135.5)).toBe(true)
+      // MapLibreのpanToは[経度, 緯度]順
+      expect(map0._calls.some((c) => c.name === 'panTo' && Array.isArray(c.args[0]) && c.args[0][0] === 135.5 && c.args[0][1] === 34.85)).toBe(true)
     }, { timeout: 3000 })
 
     // 「閉じる」でシートが閉じられる（再オープンして確認）
     const map = getMapInstance()
-    const marker = map.layers.find((l) => l.kind === 'marker' && l.handlers.click)
-    expect(marker).toBeTruthy()
-    marker.handlers.click()
+    const feature2 = map._lastGeoJSON?.data?.features?.find((f) => f.properties.key === 'node/1001')
+    expect(feature2).toBeTruthy()
+    act(() => {
+      map.fire('click', 'point-circle', {
+        features: [feature2],
+        lngLat: { lat: feature2.geometry.coordinates[1], lng: feature2.geometry.coordinates[0] }
+      })
+    })
     const dialog2 = await waitFor(() => {
       const d = screen.queryByRole('dialog')
       expect(d).toBeTruthy()
@@ -553,7 +505,7 @@ describe('(#59) 自治体モード検索', () => {
   }, IT_TIMEOUT)
 })
 
-describe('(#44) 目的チップとサンプル検索', () => {
+describe('(#44) 目的チップ', () => {
   it('目的チップ: 「買う」をタップすると具体カテゴリチップが展開し、選択すると解除ボタンが出る', () => {
     renderApp()
 
@@ -572,49 +524,18 @@ describe('(#44) 目的チップとサンプル検索', () => {
     expect(screen.queryByRole('button', { name: 'コンビニ・スーパー' })).toBeNull()
   }, IT_TIMEOUT)
 
-  it('サンプル検索: 「コーヒー」タップで現在のエリア+cafe検索が即実行される', async () => {
+  it('サンプル検索セクションは削除済み（「サンプル検索で試す」が存在しない）', () => {
     renderApp()
 
-    fireEvent.click(screen.getByRole('button', { name: /コーヒー/ }))
+    // セクション自体がレンダされない
+    expect(screen.queryByRole('region', { name: 'サンプル検索' })).toBeNull()
+    expect(screen.queryByText('サンプル検索で試す')).toBeNull()
+    // サンプル用の即検索ボタン（アイコン付きラベル）が残存していない
+    expect(screen.queryByRole('button', { name: /☕/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /💊/ })).toBeNull()
 
-    await waitFor(() => expect(overpassCalls).toHaveLength(1), { timeout: 8000 })
-    expect(overpassCalls[0]).toContain('amenity=cafe')
-    expect(overpassCalls[0]).toContain('34.800000,135.400000,34.900000,135.600000')
-
-    // 結果表示＋一覧タブ自動切替
-    await waitFor(() => {
-      expect(screen.getByText('3件の結果を取得しました')).toBeTruthy()
-    }, { timeout: 8000 })
-    expect(tabIsCurrent('一覧')).toBe(true)
-
-    // (#44) サンプル検索は検索フォームのカテゴリにも反映される
-    // → 検索タブに戻るとPickerに「カフェ」が選択済みのバッジとして出る
-    fireEvent.click(screen.getByRole('button', { name: '検索' }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: '解除' })).toBeTruthy()
-    }, { timeout: 3000 })
-    // 選択中バッジ: 「🍜 カフェ」（バッジコンテナ内のspan。一覧タブのhidden select等の混在を避ける）
-    const release = screen.getByRole('button', { name: '解除' })
-    const badgeBox = release.parentElement
-    expect(within(badgeBox).getByText(/カフェ/)).toBeTruthy()
-  }, IT_TIMEOUT)
-
-  it('自治体モードで市区町村未選択のときサンプルタップは注意メッセージを表示し検索しない', async () => {
-    renderApp()
-
-    // 自治体モードへ切替
-    fireEvent.click(screen.getByRole('tab', { name: '自治体から探す' }))
-    await waitFor(() => {
-      expect(screen.getByText('どの県で探す？')).toBeTruthy()
-    }, { timeout: 3000 })
-
-    // 市区町村未選択のまま「公園」サンプルをタップ
-    fireEvent.click(screen.getByRole('button', { name: /公園/ }))
-    const sampleSection = screen.getByRole('region', { name: 'サンプル検索' })
-    await waitFor(() => {
-      expect(within(sampleSection).getByText(/自治体が未選択/)).toBeTruthy()
-    }, { timeout: 3000 })
-    expect(overpassCalls).toHaveLength(0)
+    // 残りの検索機能はそのまま動作する（地図モードの検索範囲カード等）
+    expect(screen.getByText('どの街・エリアで探す？')).toBeTruthy()
   }, IT_TIMEOUT)
 })
 

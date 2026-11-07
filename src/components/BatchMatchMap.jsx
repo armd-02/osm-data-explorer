@@ -1,13 +1,15 @@
 import React, { useRef, useEffect } from 'react'
-import L from 'leaflet'
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { OSM_RASTER_STYLE } from '../utils/mapStyle'
 
 /**
- * 一括照合用ミニ地図 (#35)
+ * 一括照合用ミニ地図 (#35)（MapLibre版）
  * プレビュー候補の位置を表示（panToのみ、BBOX変更しない）
  * 確定済みの位置も表示
  *
  * (モバイル対応) PCのBatchMatch 3ペインとモバイル縦流れレイアウトの両方で
- * 共用する。#38（プレーンテキストツールチップ）・#39（対象なし時のマーカー
+ * 共用する。#38（プレーンテキストポップアップ）・#39（対象なし時のマーカー
  * 削除＝残存防止）の挙動をここで一元管理する。
  */
 export default function BatchMatchMap({ matchResults, previewCandidate, activeRow }) {
@@ -18,19 +20,20 @@ export default function BatchMatchMap({ matchResults, previewCandidate, activeRo
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
 
-    const map = L.map(mapContainerRef.current, {
-      center: [34.705, 135.485],
-      zoom: 14,
-      zoomControl: true,
-      attributionControl: true  // OSM帰属表示を有効化 (#35)
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: OSM_RASTER_STYLE,
+      // MapLibreのcenterは[経度, 緯度]順（旧Leaflet版は[34.705, 135.485]）
+      center: [135.485, 34.705],
+      zoom: 14
     })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map)
     mapRef.current = map
 
     return () => {
+      if (markerRef.current) {
+        markerRef.current.remove()
+        markerRef.current = null
+      }
       map.remove()
       mapRef.current = null
     }
@@ -38,7 +41,8 @@ export default function BatchMatchMap({ matchResults, previewCandidate, activeRo
 
   // プレビュー/確定の位置へpanTo
   useEffect(() => {
-    if (!mapRef.current || !matchResults) return
+    const map = mapRef.current
+    if (!map || !matchResults) return
 
     let target = null
 
@@ -63,31 +67,29 @@ export default function BatchMatchMap({ matchResults, previewCandidate, activeRo
     // 対象がない場合は既存マーカーを削除 (#39: マーカー残存防止)
     if (!target) {
       if (markerRef.current) {
-        mapRef.current.removeLayer(markerRef.current)
+        markerRef.current.remove()
         markerRef.current = null
       }
       return
     }
 
-    mapRef.current.panTo([target.lat, target.lon], { animate: true })
+    // MapLibreのpanToは[経度, 緯度]順
+    map.panTo([target.lon, target.lat])
 
     // マーカー更新
     if (markerRef.current) {
-      mapRef.current.removeLayer(markerRef.current)
+      markerRef.current.remove()
       markerRef.current = null
     }
     const color = target.confirmed ? '#059669' : '#dc2626'
-    markerRef.current = L.marker([target.lat, target.lon], {
-      icon: L.divIcon({
-        html: `<div style="width:14px;height:14px;background:${color};border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7]
-      })
-    }).addTo(mapRef.current)
-    // #38: 安全なテキストツールチップ（textContentでHTML解釈しない）
-    const safeLabel = document.createElement('span')
-    safeLabel.textContent = target.label ?? ''
-    markerRef.current.bindTooltip(safeLabel, { direction: 'top', offset: [0, -8] })
+    const el = document.createElement('div')
+    el.className = 'batch-map-marker'
+    el.style.background = color
+    const marker = new maplibregl.Marker({ element: el }).setLngLat([target.lon, target.lat])
+    // #38: 安全なテキストポップアップ（setTextはプレーンテキスト）
+    marker.setPopup(new maplibregl.Popup({ offset: 12 }).setText(target.label ?? ''))
+    marker.addTo(map)
+    markerRef.current = marker
   }, [previewCandidate, activeRow?.confirmed, activeRow?.matched?.lat, activeRow?.matched?.lon, matchResults])
 
   return <div ref={mapContainerRef} className="w-full h-full" />

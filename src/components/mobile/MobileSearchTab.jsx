@@ -13,18 +13,6 @@ import ShareButton from '../ShareButton'
 import MapView from '../MapView'
 
 /**
- * (#44) サンプルアクション（生活者目線の入口）
- * 「コーヒーを探す」のように目的単位でタップすると、
- * 現在のエリア+カテゴリで即検索される。
- */
-const SAMPLE_ACTIONS = [
-  { icon: '☕', label: 'コーヒー', catId: 'cafe' },
-  { icon: '🏪', label: 'コンビニ', catId: 'convenience' },
-  { icon: '🌳', label: '公園', catId: 'park' },
-  { icon: '💊', label: '薬局', catId: 'pharmacy' },
-]
-
-/**
  * (#59) モバイル「検索」タブ
  *
  * 入力順（優先度順）: 1) エリア 2) 施設カテゴリ 3) 施設名・キーワード 4) 検索実行
@@ -40,7 +28,6 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
   const { search, cancel } = useSearch()
   const { searchSource, searchMode, bbox, selectedMunicipality } = state
   const [boundsVersion, setBoundsVersion] = useState(0)
-  const [sampleMsg, setSampleMsg] = useState(null)
 
   const switchSource = (source) => {
     if (source === state.searchSource) return
@@ -101,30 +88,6 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
     search(c)
   }
 
-  // (#44) サンプルアクション: 現在のエリア+目的カテゴリで即検索
-  const handleSample = (catId) => {
-    const mapBounds = searchSource === 'map' ? readMapBounds() : null
-    // サンプルは具体カテゴリで検索するため、目的スコープはクリアする
-    const next =
-      searchSource === 'municipality'
-        ? { ...state, municipalitySearch: { ...state.municipalitySearch, category: catId, purpose: '' } }
-        : { ...state, simpleSearch: { ...state.simpleSearch, category: catId, purpose: '' } }
-    const c = buildSearchCriteria(next, mapBounds ? { mapBounds } : {})
-    if (c.ok !== true) {
-      setSampleMsg(c.message || '先に検索エリアを設定してください')
-      return
-    }
-    // (#44) 選択したカテゴリを検索フォームstateにも反映する。
-    // これで取得後の結果が選択カテゴリで絞り込まれ（reducerのミラー）、
-    // チップ表示・一覧フィルタ・共有URLが実行した検索と一致する。
-    dispatch({
-      type: searchSource === 'municipality' ? 'SET_MUNICIPALITY_SEARCH' : 'SET_SIMPLE_SEARCH',
-      payload: { category: catId, purpose: '' }
-    })
-    setSampleMsg(null)
-    search(c)
-  }
-
   const sourceBtn = (id, label) => (
     <button
       type="button"
@@ -181,30 +144,6 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
         )}
 
         <ShareButton />
-
-        {/* (#44) サンプルアクション: 「探す」の入口を明示する */}
-        <section aria-label="サンプル検索" className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-          <h2 className="text-[11px] font-medium text-blue-700 mb-1.5">サンプル検索で試す</h2>
-          <div className="grid grid-cols-2 gap-1.5">
-            {SAMPLE_ACTIONS.map((s) => (
-              <button
-                key={s.catId}
-                type="button"
-                onClick={() => handleSample(s.catId)}
-                className="min-h-[44px] rounded-lg bg-white border border-slate-200 px-2 text-sm text-slate-700 active:bg-slate-50"
-              >
-                {s.icon} {s.label}
-              </button>
-            ))}
-          </div>
-          {sampleMsg ? (
-            <p className="mt-1.5 text-[11px] text-amber-700">⚠️ {sampleMsg}</p>
-          ) : (
-            <p className="mt-1.5 text-[11px] text-slate-500">
-              現在のエリアでその目的の施設をすぐ検索します。
-            </p>
-          )}
-        </section>
       </div>
 
       {/* 5) 検索実行（スロールームの外に固定 — P0 再発防止） */}

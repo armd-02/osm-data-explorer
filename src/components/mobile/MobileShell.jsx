@@ -15,7 +15,7 @@ import MobileFacilityDetail from './MobileFacilityDetail'
  *   エラーはタブを離れても画面に戻ってくる）
  * - 中央: 3タブ（検索/一覧/その他）。非活性タブは hidden で
  *   アンマウントしないため、検索条件・フィルタ状態がタブ切替をまたいで保持される。
- *   (#60) Leaflet マップは検索タブ内に常設（地図モード時のみレンダリング）
+ *   (#60) MapLibre マップは検索タブ内に常設（地図モード時のみレンダリング）
  * - 下部: 下部ナビゲーション（3タブ）
  * - 施設詳細: ボトムシート（オーバーレイ。主ナビのタブではない）
  *
@@ -35,12 +35,13 @@ export default function MobileShell() {
     setTab(state.status === 'success' ? 'list' : 'search')
   }, [state.status])
 
-  // 検索タブに戻ったとき: 地図の表示領域が0だったLeafletを invalidateSize で修正
+  // 検索タブに戻ったとき: 地図の表示領域が0だったMapLibreを resize() で修正
   // （検索タブは hidden のままアンマウントされないため、戻った瞬間にサイズが古い）
+  // (#60) MapLibreのresize()（旧LeafletのinvalidateSize()相当）
   useEffect(() => {
     if (tab !== 'search') return
     const map = getMapInstance()
-    if (map && typeof map.invalidateSize === 'function') map.invalidateSize()
+    if (map && typeof map.resize === 'function') map.resize()
   }, [tab])
 
   const openDetail = (result, origin) => setDetail({ result, origin })

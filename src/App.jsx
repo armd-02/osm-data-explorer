@@ -51,7 +51,9 @@ function App() {
       if (urlState.searchMode) dispatch({ type: 'SET_SEARCH_MODE', payload: urlState.searchMode })
       if (urlState.simpleSearch) dispatch({ type: 'SET_SIMPLE_SEARCH', payload: urlState.simpleSearch })
       if (urlState.advancedSearch) dispatch({ type: 'SET_ADVANCED_SEARCH', payload: urlState.advancedSearch })
-      if (urlState.bbox) dispatch({ type: 'SET_BBOX', payload: urlState.bbox })
+      // (Task 2) URL復元由来のbboxは source:'url' と記録
+      // → MapViewはこれのみカメラfit（検索由来はfitしない）
+      if (urlState.bbox) dispatch({ type: 'SET_BBOX', payload: { ...urlState.bbox, source: 'url' } })
       if (urlState.selectedMunicipality) dispatch({ type: 'SET_MUNICIPALITY', payload: urlState.selectedMunicipality })
       if (urlState.municipalitySearch) dispatch({ type: 'SET_MUNICIPALITY_SEARCH', payload: urlState.municipalitySearch })
       // (A2) 一覧フィルタを最後に適用: 検索stateのミラー値を上書きし、URLを権威に
@@ -190,9 +192,9 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
 
     const onUp = () => {
       cleanup()
-      // Leafletサイズ再調整（最終）
+      // MapLibreサイズ再調整（最終）
       const map = getMapInstance()
-      if (map) map.invalidateSize()
+      if (map && typeof map.resize === 'function') map.resize()
     }
 
     cleanupRef.current = cleanup
@@ -228,7 +230,7 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
       document.removeEventListener('pointercancel', onUp)
       if (vCleanupRef.current === cleanup) vCleanupRef.current = null
       const map = getMapInstance()
-      if (map) map.invalidateSize()
+      if (map && typeof map.resize === 'function') map.resize()
     }
 
     const cleanup = () => {
@@ -253,7 +255,7 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
     }
   }, [])
 
-  // (#41-3/#45) ResizeObserver: コンテナ幅・高さ変化に合わせてinvalidateSize()
+  // (#41-3/#45) ResizeObserver: コンテナ幅・高さ変化に合わせてresize()（MapLibre）
   // ドラッグ中もタイルが欠けないよう、連続再描画を抑制して呼び出す
   React.useEffect(() => {
     if (!splitRef.current) return
@@ -263,7 +265,7 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
       timer = setTimeout(() => {
         timer = null
         const map = getMapInstance()
-        if (map) map.invalidateSize()
+        if (map && typeof map.resize === 'function') map.resize()
       }, 50)
     })
     observer.observe(splitRef.current)

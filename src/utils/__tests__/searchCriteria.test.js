@@ -16,7 +16,7 @@ const SMALL_BBOX = { south: 34.7, west: 135.5, north: 34.72, east: 135.52 }
 const BBOX_STR = '34.700000,135.500000,34.720000,135.520000'
 const HUGE_BBOX = { south: 30.0, west: 130.0, north: 40.0, east: 140.0 }
 
-function leafletLikeBounds(bbox) {
+function legacyBounds(bbox) {
   return {
     getSouth: () => bbox.south,
     getNorth: () => bbox.north,
@@ -79,7 +79,7 @@ describe('buildSearchCriteria — 地図モード（かんたん検索）', () =
   })
 
   it('状態BBOXがない場合、地図表示範囲(mapBounds)を使う (#41/#47)', () => {
-    const bounds = leafletLikeBounds({ south: 35.6, west: 139.7, north: 35.7, east: 139.8 })
+    const bounds = legacyBounds({ south: 35.6, west: 139.7, north: 35.7, east: 139.8 })
     const criteria = buildSearchCriteria(baseState({
       simpleSearch: { category: 'restaurant', keyword: '', location: '' }
     }), { mapBounds: bounds })

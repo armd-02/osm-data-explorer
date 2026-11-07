@@ -6,7 +6,7 @@
  * - #31: タブ往復（コンポーネントのhidden化）で状態が保持される
  * - 確定/取消の意味（確定=地図用CSVに座標付与、取消=解除）
  *
- * Leafletはjsdomで動かないためBatchMatchMapをモックする。
+ * MapLibre GLはjsdomで動かない（WebGL必須）ためBatchMatchMapをモックする。
  */
 import React, { useReducer, useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
