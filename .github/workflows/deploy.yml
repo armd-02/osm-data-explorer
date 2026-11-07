@@ -40,6 +40,26 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Self-healing redirect for the previous bundle
+        # (#47続報) デプロイでバンドル名が変わると旧ファイルはサーバーから消え(404)る。
+        # ここでは公開中サイトの現行バンドル名をフェッチし、そのパスにセルフヒーリング
+        # リダイレクト（一意query付きで最新版へ自動リロード）を dist/ に置くことで、
+        # ブラウザキャッシュに旧HTMLが残っていてもキャッシュ期限切れ後に自動回復する。
+        # 旧CSSもプレースホルダで404回避。サイトがフェッチできない場合は何もしない。
+        run: |
+          LIVE="https://armd-02.github.io/osm-data-explorer/"
+          PREV_JS=$(curl -sf --max-time 15 "$LIVE" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1 | sed 's|assets/||' || true)
+          PREV_CSS=$(curl -sf --max-time 15 "$LIVE" | grep -o 'assets/index-[A-Za-z0-9_-]*\.css' | head -1 | sed 's|assets/||' || true)
+          echo "live bundle: js=${PREV_JS:-none} css=${PREV_CSS:-none}"
+          if [ -n "$PREV_JS" ] && [ ! -f "dist/assets/$PREV_JS" ]; then
+            cp selfheal/redirect.js "dist/assets/$PREV_JS"
+            echo "added self-healing redirect: $PREV_JS"
+          fi
+          if [ -n "$PREV_CSS" ] && [ ! -f "dist/assets/$PREV_CSS" ]; then
+            cp selfheal/placeholder.css "dist/assets/$PREV_CSS"
+            echo "added css placeholder: $PREV_CSS"
+          fi
+
       - name: Copy Pages config files
         # 注: GitHub Pages は _headers をサポートしていないため実際には無効（実測済 #47続報）。
         # 旧バンドル固定対策は index.html のセルフアップデートスクリプトが担う。
