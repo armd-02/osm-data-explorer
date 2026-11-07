@@ -23,38 +23,53 @@ const CLUSTER_COUNT_LAYER = 'cluster-count'
 const CLUSTER_RADIUS = 45
 const CLUSTER_MAX_ZOOM = 13
 
-const POINT_LAYER_DEF = {
+// MapLibreスタイル仕様に準拠したレイヤ定義。
+// - paint/layoutプロパティはkebab-caseで、それぞれ paint: / layout: オブジェクト内に書く。
+// - レイヤのトップレベルに置いたcamelCaseプロパティ（circleRadius等）はMapLibreが
+//   検証も適用もせず無言で無視するため、必ずnestingが必要。
+// - symbolの text-field/text-font/text-size はMapLibre仕様のlayoutプロパティ
+//   （Mapboxではpaint側だがMapLibreで分類が異なる）。
+// 回帰テスト: src/components/__tests__/mapViewLayerDefs.test.js
+export const POINT_LAYER_DEF = {
   id: POINT_LAYER,
   type: 'circle',
   source: RESULTS_SOURCE,
   filter: ['!', ['has', 'point_count']],
-  circleRadius: 6,
-  circleColor: '#2563eb',
-  circleStrokeWidth: 2,
-  circleStrokeColor: '#ffffff'
+  paint: {
+    'circle-radius': 6,
+    'circle-color': '#2563eb',
+    'circle-stroke-width': 2,
+    'circle-stroke-color': '#ffffff'
+  }
 }
 
-const CLUSTERS_LAYER_DEF = {
+export const CLUSTERS_LAYER_DEF = {
   id: CLUSTERS_LAYER,
   type: 'circle',
   source: RESULTS_SOURCE,
   filter: ['has', 'point_count'],
-  circleRadius: ['step', ['get', 'point_count'], 12, 4, 16, 16, 20, 24, 32],
-  circleColor: '#f59e0b',
-  circleStrokeWidth: 2,
-  circleStrokeColor: '#ffffff'
+  paint: {
+    'circle-radius': ['step', ['get', 'point_count'], 12, 4, 16, 16, 20, 24, 32],
+    'circle-color': '#f59e0b',
+    'circle-stroke-width': 2,
+    'circle-stroke-color': '#ffffff'
+  }
 }
 
-const CLUSTER_COUNT_LAYER_DEF = {
+export const CLUSTER_COUNT_LAYER_DEF = {
   id: CLUSTER_COUNT_LAYER,
   type: 'symbol',
   source: RESULTS_SOURCE,
   filter: ['has', 'point_count'],
-  textField: ['get', 'point_count'],
-  textFont: ['Noto Sans Regular'],
-  textSize: 12,
-  textColor: '#ffffff',
-  layout: { textAnchor: 'center' }
+  layout: {
+    'text-field': ['get', 'point_count'],
+    'text-font': ['Noto Sans Regular'],
+    'text-size': 12,
+    'text-anchor': 'center'
+  },
+  paint: {
+    'text-color': '#ffffff'
+  }
 }
 
 /**
