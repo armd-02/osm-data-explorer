@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
 import CategoryPicker from './CategoryPicker'
@@ -28,6 +28,11 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
   const [loading, setLoading] = useState(true)
   const [prefCode, setPrefCode] = useState('')
   const [munCode, setMunCode] = useState('')
+  // (#55) 都道府県選択ブロックの折りたたみ: 初期は開いた状態（ページを開いたら開く）
+  const [prefOpen, setPrefOpen] = useState(true)
+  // 折りたたみ直後に市区町村selectへフォーカスする_pendingフラグ（selectがレンダされてから実行）
+  const [pendingMunFocus, setPendingMunFocus] = useState(false)
+  const munSelectRef = useRef(null)
   // (#47) カテゴリ・キーワードは親stateに上げ、検索ボタンと共有する
   const { category, keyword, cuisine, purpose } = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
 
@@ -104,11 +109,24 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
     return data.municipalities.find(m => m.code === munCode) || null
   }, [data, munCode])
 
+  // (#55) 折りたたみ表示用の都道府県名
+  const selectedPrefName = useMemo(() => {
+    if (!data || !prefCode) return ''
+    return PREFECTURES.find(p => p.code === prefCode)?.name || ''
+  }, [data, prefCode, PREFECTURES])
+
+  // (#55) 都道府県選択後、選択ブロックを折りたたみ＋市区町村selectへのフォーカスを要求
+  const collapsePrefecture = () => {
+    setPrefOpen(false)
+    setPendingMunFocus(true)
+  }
+
   // 都道府県変更時、自治体選択をリセットし、親stateからもクリア (#47)
   const handlePrefChange = (e) => {
     setPrefCode(e.target.value)
     setMunCode('')
     dispatch({ type: 'SET_MUNICIPALITY', payload: null })
+    if (e.target.value) collapsePrefecture()
   }
 
   // ブロック地図（タイルグリッド）のタイル選択: select の onChange と同一の更新処理
@@ -116,7 +134,15 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
     setPrefCode(code)
     setMunCode('')
     dispatch({ type: 'SET_MUNICIPALITY', payload: null })
+    collapsePrefecture()
   }
+
+  // (#55) 折りたたみ後に市区町村selectがレンダされたらフォーカスを移動
+  useEffect(() => {
+    if (!pendingMunFocus) return
+    if (munSelectRef.current) munSelectRef.current.focus()
+    setPendingMunFocus(false)
+  }, [pendingMunFocus, prefCode])
 
   // (#47) 市区町村選択を親stateに同期（検索ボタンのdisable判定・BBOX共有用）
   const handleMunChange = (e) => {
@@ -155,12 +181,23 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
       {/* 都道府県選択: ブロック地図（タイルグリッド）から選択 */}
       <div>
         <label htmlFor={prefSelectId} className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの県で探す？' : '都道府県'}</label>
-        <PrefectureTileMap
-          prefectures={PREFECTURES}
-          value={prefCode}
-          onSelect={handlePrefSelect}
-          variant={isMobile ? 'mobile' : 'pc'}
-        />
+        {prefOpen ? (
+          <PrefectureTileMap
+            prefectures={PREFECTURES}
+            value={prefCode}
+            onSelect={handlePrefSelect}
+            variant={isMobile ? 'mobile' : 'pc'}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPrefOpen(true)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-left flex items-center justify-between"
+          >
+            <span className="font-medium text-slate-800">{selectedPrefName}</span>
+            <span className="text-xs text-slate-400">変更 ▾</span>
+          </button>
+        )}
         {/* 従来のセレクトは視覚的に隠したまま残す（キーボード・スクリーンリーダーのフォールバック） */}
         <select
           id={prefSelectId}
@@ -181,6 +218,7 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの市区町村で探す？' : '市区町村'}</label>
           <select
+            ref={munSelectRef}
             value={munCode}
             onChange={handleMunChange}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"

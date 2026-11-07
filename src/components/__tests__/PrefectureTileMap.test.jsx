@@ -287,6 +287,12 @@ describe('MunicipalitySearch 統合（ブロック地図選択）', () => {
     fireEvent.change(munSelect, { target: { value: opt.value } })
     await waitFor(() => expect(getSelectByLabel('市区町村').value).toBe('272078'), { timeout: 3000 })
 
+    // (#55) 県選択でタイル地図が折りたためるため、別県を選ぶにはまず再展開する
+    fireEvent.click(screen.getByRole('button', { name: /変更/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '奈良県' })).toBeTruthy()
+    }, { timeout: 3000 })
+
     // 奈良県タイルを選択 → 市区町村がクリアされ奈良市のオプションだけになる
     fireEvent.click(screen.getByRole('button', { name: '奈良県' }))
     await waitFor(() => {
