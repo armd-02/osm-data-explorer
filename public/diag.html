@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>キャッシュ診断 | まちデータ帳</title>
+  <style>
+    body { font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif; max-width: 640px; margin: 0 auto; padding: 24px 16px; line-height: 1.7; color: #1f2937; background: #f8fafc; }
+    h1 { font-size: 1.3rem; }
+    h2 { font-size: 1.05rem; margin-top: 0; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 16px 0; }
+    .ok { color: #059669; font-weight: 600; }
+    .bad { color: #dc2626; font-weight: 600; }
+    code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+    pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 0.8rem; }
+    button { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 12px 20px; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; font-size: 0.9rem; }
+    th { background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <h1>🔍 ブラウザキャッシュ診断</h1>
+  <p>
+    まちデータ帳は GitHub Pages に公開されており、<code>index.html</code> は
+    <strong>10分間ブラウザにキャッシュされる</strong>仕様です（GitHub Pages はキャッシュ設定に
+    対応していないため）。デプロイ（更新）直後に通常リロードしても、
+    キャッシュの古い HTML・JS が読み込まれ、<strong>古いコードが動き続ける</strong>ことがあります。
+    このページで、あなたのブラウザがどの状態かを診断できます。
+  </p>
+
+  <div class="card">
+    <h2>現在のライブサイト（最新デプロイ）の状態</h2>
+    <table>
+      <tr><th>項目</th><th>値</th></tr>
+      <tr><td>最新 app-version</td><td id="latest-version">取得中…</td></tr>
+      <tr><td>本体バンドル</td><td id="latest-bundle">取得中…</td></tr>
+      <tr><td>maplibre チャンク</td><td id="latest-maplibre">取得中…</td></tr>
+      <tr><td>セルフアップデート機構</td><td id="latest-selfupdate">取得中…</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>アプリのタブを確認する</h2>
+    <p>まちデータ帳のタブで DevTools のコンソールを開き、次の一行を貼り付けて実行してください:</p>
+    <pre>document.querySelector('meta[name="app-version"]')?.content ?? '旧HTML（機構なし）'</pre>
+    <p>
+      表示された値が上の「最新 app-version」と<strong>一致していれば最新</strong>です。
+      一致しない（または「旧HTML（機構なし）」）場合は、あなたのタブはキャッシュの古い版で動いています。
+      その場合は下のボタンでキャッシュをバイパスして開き直してください。
+    </p>
+  </div>
+
+  <div class="card">
+    <button id="fix-btn" disabled>キャッシュをバイパスして最新版を開く</button>
+    <p style="font-size:0.85rem;color:#6b7280">
+      現在のタブが置換され、必ず新鮮な HTML・JS を取得します。
+      URL に保存されている検索条件（bbox・キーワード等）は引き継がれません。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>その他の回避方法</h2>
+    <ul>
+      <li>ハードリロード: <code>Ctrl+Shift+R</code>（Mac: <code>Cmd+Shift+R</code>）</li>
+      <li>URL に任意の query を付加して開く: <code>…/osm-data-explorer/?x=1</code></li>
+      <li>DevTools → Application → Storage → “Clear site data”</li>
+      <li>10分待つ（キャッシュの有効期限が切れると次回リロードで最新版になります）</li>
+    </ul>
+  </div>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('fix-btn');
+      var ids = ['latest-version', 'latest-bundle', 'latest-maplibre', 'latest-selfupdate'];
+
+      function set(id, val, ok) {
+        var el = document.getElementById(id);
+        el.textContent = val;
+        el.className = ok ? 'ok' : 'bad';
+      }
+
+      function appUrl() {
+        return location.pathname.replace(/\/diag\.html$/, '');
+      }
+
+      // 最新 HTML をキャッシュバイパスで取得し、ライブ状態を表示する
+      fetch(location.pathname.replace(/\/diag\.html$/, 'index.html'), { cache: 'no-store', credentials: 'omit' })
+        .then(function (r) { return r.ok ? r.text() : null; })
+        .then(function (html) {
+          if (!html) throw new Error('index.html を取得できません');
+          var v = (html.match(/<meta name="app-version" content="([^"]+)"/) || [])[1] || null;
+          var b = (html.match(/assets\/(index-[^"]+\.js)/) || [])[1] || null;
+          var m = (html.match(/assets\/(maplibre-gl-[^"]+\.js)/) || [])[1] || null;
+          var su = html.indexOf('no-store') !== -1 && html.indexOf('location.replace') !== -1;
+          set('latest-version', v, !!v);
+          set('latest-bundle', b, !!b);
+          set('latest-maplibre', m, !!m);
+          set('latest-selfupdate', su ? 'あり' : 'なし', su);
+          btn.disabled = false;
+          btn.addEventListener('click', function () {
+            // 一意の query を付与 → ブラウザのディスクキャッシュを必ず回避
+            location.replace(appUrl() + '?appv=' + Date.now());
+          });
+        })
+        .catch(function (e) {
+          ids.forEach(function (id) { set(id, '取得失敗: ' + e.message, false); });
+        });
+    })();
+  </script>
+</body>
+</html>
