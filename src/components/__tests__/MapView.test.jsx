@@ -309,6 +309,42 @@ describe('ハイライトマーカー（#60 施設選択）', () => {
   })
 })
 
+describe('Task 11: GeoJSONソース更新はsetData（Map.setGeoJSONはmaplibre-glに存在しない）', () => {
+  it('mockは実APIに合わせMap.setGeoJSONを持たない（回帰時にTypeErrorで検出）', () => {
+    renderMap({ results: RESULTS })
+    fireLoad()
+    // 実maplibre-glのMapにはsetGeoJSONメソッドがない（mapbox-gl由来のAPI）。
+    // モックにも存在させないことで、アプリ側が誤ってmap.setGeoJSON()を呼んだ場合は
+    // 本番と同様の「setGeoJSON is not a function」でテストが失敗する。
+    expect(getMap().setGeoJSON).toBeUndefined()
+  })
+
+  it('検索結果の到着はgetSource("results").setData()で反映される', () => {
+    const { view, state } = renderMap({ results: [] })
+    fireLoad()
+    const map = getMap()
+    // load時のsyncResults: 空のFeatureCollectionがsetDataされている
+    expect(map._lastGeoJSON.id).toBe('results')
+    expect(map._lastGeoJSON.data.features.length).toBe(0)
+
+    // 検索結果がstateに到着 → [results] effectがsetDataを呼ぶ
+    act(() => {
+      view.rerender(
+        <AppContext.Provider
+          value={{ state: { ...state, results: RESULTS, bbox: BBOX_KYOto, bboxSource: 'search' }, dispatch: vi.fn() }}
+        >
+          <MapView />
+        </AppContext.Provider>
+      )
+    })
+
+    expect(map._lastGeoJSON.id).toBe('results')
+    expect(map._lastGeoJSON.data.features.length).toBe(2)
+    const keys = map._lastGeoJSON.data.features.map((f) => f.properties.key)
+    expect(keys).toEqual(['node/9001', 'way/9002'])
+  })
+})
+
 describe('モバイル: マーカークリックでボトムシート（ポップアップ非表示）', () => {
   it('onMarkerClickが提供されていればクリックでコールバックし、ポップアップを作らない', () => {
     const onMarkerClick = vi.fn()

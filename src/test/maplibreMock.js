@@ -15,13 +15,19 @@
  *   const map = mockState.api._state.maps[0]
  *   map.fire('load')            // style loadイベントを擬似発火
  *   map._calls                  // [{name:'fitBounds', args:[...]} ...]
- *   map._lastGeoJSON            // 最終setGeoJSON {id, data}
+ *   map._lastGeoJSON            // 最終setData {id, data}
  *   mockState.api._state.markers / .popups
  *
  * API対応（MapView/MapToolbar/BatchMatchMapが使用するもの）:
  * - Map: on/off/fire, addSource/getSource/addLayer/removeLayer/removeSource,
- *   setGeoJSON, querySourceFeatures, setView/fitBounds/panTo/easeTo/jumpTo,
+ *   querySourceFeatures, setView/fitBounds/panTo/easeTo/jumpTo,
  *   getBounds/getZoom/getCenter, getCanvas, addControl, resize, remove
+ * - GeoJSONSource（addSourceで生成・getSourceで取得）: setData(data)
+ *
+ * 注: 実maplibre-glのMapにはsetGeoJSON()メソッドが存在しない（mapbox-gl由来のAPI）。
+ * 本モックも実APIに合わせsetGeoJSONを実装しておらず、アプリ側が誤って
+ * map.setGeoJSON()を呼んだ場合は本番と同様のTypeErrorでテストが失敗する
+ * （Task 11: 検索時の「map.setGeoJSON is not a function」回帰防止）。
  * - Marker: setLngLat/addTo/remove/setPopup/getPopup
  * - Popup: setLngLat/setDOMElement/setText/addTo/open/close/remove
  * - NavigationControl: addTo/remove
@@ -97,12 +103,22 @@ export function createMapLibreMock(options = {}) {
         this._calls.push({ name, args })
         return this
       },
-      addSource(id, def) { this._sources.set(id, def); return this },
+      // 実maplibre-glと同様、GeoJSONソースはsetData()でデータ更新する。
+      // defのフィールド（type/cluster/clusterRadius等）はそのまま保持し、
+      // setData(data)はmap._lastGeoJSONに記録する。
+      addSource(id, def) {
+        const source = {
+          ...def,
+          setData(data) { this._ownerMap._lastGeoJSON = { id, data }; return this },
+        }
+        source._ownerMap = this
+        this._sources.set(id, source)
+        return this
+      },
       getSource(id) { return this._sources.has(id) ? this._sources.get(id) : null },
       removeSource(id) { this._sources.delete(id); return this },
       addLayer(layer) { this._layers.push(layer); return this },
       removeLayer(id) { this._layers = this._layers.filter((l) => l.id !== id); return this },
-      setGeoJSON(id, data) { this._lastGeoJSON = { id, data }; return this },
       querySourceFeatures(id, query) {
         const fn = state._querySourceFeatures || this._queryFeaturesFn
         return fn ? fn(id, query) : []

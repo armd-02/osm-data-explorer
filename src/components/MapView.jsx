@@ -176,7 +176,11 @@ function MapView({ onMarkerClick = null }) {
   const syncResults = () => {
     const map = mapInstanceRef.current
     if (!map || !loadedRef.current) return false
-    map.setGeoJSON(RESULTS_SOURCE, resultsToGeoJSON(resultsRef.current))
+    // 注: maplibre-glのMapにはMap.setGeoJSON()がない（mapbox-gl由来のAPI）。
+    // 正しいAPIは getSource(id).setData(geojson) である。
+    const source = map.getSource(RESULTS_SOURCE)
+    if (!source) return false
+    source.setData(resultsToGeoJSON(resultsRef.current))
     return true
   }
 
@@ -401,7 +405,11 @@ function MapView({ onMarkerClick = null }) {
       popupRef.current.remove()
       popupRef.current = null
     }
-    map.setGeoJSON(RESULTS_SOURCE, resultsToGeoJSON(results))
+    // (Task 11) maplibre-glにはMap.setGeoJSON()が存在しない（mapbox-glのAPI）ため、
+    // 検索結果の反映は getSource().setData() で行う。
+    const source = map.getSource(RESULTS_SOURCE)
+    if (!source) return
+    source.setData(resultsToGeoJSON(results))
   }, [results])
 
   // Highlight active result — panToで移動（BBOX・ズームは変更しない）
