@@ -1,4 +1,11 @@
 # GitHub Pages カスタムヘッダ
 # SPAの入口HTMLは常に最新をフェッチさせる（旧バンドル固定を防ぐ #47追跡）
+#
+# パターン一致のセマンティクスがプロジェクトサイト（user.github.io/repo/）で
+# どの形になるか未確定のため、候補を3つ並べる（実測で動作する形に整理する）。
 /index.html
+  Cache-Control: no-cache, must-revalidate
+/osm-data-explorer/index.html
+  Cache-Control: no-cache, must-revalidate
+/osm-data-explorer/
   Cache-Control: no-cache, must-revalidate
