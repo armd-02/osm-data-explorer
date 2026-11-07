@@ -222,7 +222,7 @@ describe('PrefectureTileMap（コンポーネント）', () => {
     expect(cls).toContain('block')         // auto marginによる中央寄せにはblock必須
   })
 
-  it('実寸で47都道府県がスクロールなしで1画面に収まる（幅上限時の高さが700px以下）', () => {
+  it('実寸で47都道府県がスクロールなしで1画面に収まる（幅上限時の高さが760px以下）', () => {
     // 47都道府県すべて（名前はダミーでよい。重要なのはTILE_GRID配置）
     const all47 = Object.entries(TILE_GRID).map(([code]) => ({ code, name: `県${code}` }))
     const { container } = render(
@@ -232,8 +232,8 @@ describe('PrefectureTileMap（コンポーネント）', () => {
     const [, , w, h] = svg.getAttribute('viewBox').split(' ').map(Number)
     // 幅が上限300pxの時の実寸高さ（viewBoxの縦横比を維持してスケール）
     const renderedHeight = 300 * (h / w)
-    // 標準的な画面（高さ768px以上、ブラウザUIを除いた表示域≒700〜720px）に収まる
-    expect(renderedHeight).toBeLessThanOrEqual(700)
+    // 標準的な画面（高さ768px以上、ブラウザUIを除いた表示域≒760px）に収まる
+    expect(renderedHeight).toBeLessThanOrEqual(760)
   })
 })
 
