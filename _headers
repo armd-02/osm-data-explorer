@@ -1,11 +1,8 @@
-# GitHub Pages カスタムヘッダ
-# SPAの入口HTMLは常に最新をフェッチさせる（旧バンドル固定を防ぐ #47追跡）
-#
-# パターン一致のセマンティクスがプロジェクトサイト（user.github.io/repo/）で
-# どの形になるか未確定のため、候補を3つ並べる（実測で動作する形に整理する）。
+# 注意: GitHub Pages はこの _headers ファイルをサポートしていない
+# （Cloudflare Pages / Netlify の機能）。2026-11-07 に実測で確認済み:
+# パターン形式にかかわらず index.html は max-age=600 のままである。
+# 代替策として index.html にセルフアップデートスクリプト（app-version meta）を
+# 実装済み。新デプロイを検知してページを自動リロードする。
+# このファイルは、対応するホスティングに移行した場合に使えるよう保持している。
 /index.html
-  Cache-Control: no-cache, must-revalidate
-/osm-data-explorer/index.html
-  Cache-Control: no-cache, must-revalidate
-/osm-data-explorer/
   Cache-Control: no-cache, must-revalidate

@@ -41,8 +41,9 @@ jobs:
         run: npm run build
 
       - name: Copy Pages config files
-        # (#47追跡) _headers（index.html no-cache）を公開ディレクトリにコピー。
-        # Actionsデプロイはdist/のみを公開するため、リポジトリ直下の_headersでは効かない。
+        # 注: GitHub Pages は _headers をサポートしていないため実際には無効（実測済 #47続報）。
+        # 旧バンドル固定対策は index.html のセルフアップデートスクリプトが担う。
+        # ファイル自体は対応するホスティングへの移植用に保持。
         run: cp _headers dist/
 
       - name: Setup Pages

@@ -5,7 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#2563eb" />
   <meta name="description" content="地図や自治体から、お店・施設の情報を探して保存。OpenStreetMapを活用した、誰でも使えるまちデータ帳。" />
+  <!-- ビルド時にgit短ハッシュが注入される（vite.config.jsのappVersionPlugin） -->
+  <meta name="app-version" content="__APP_VERSION__" />
   <title>まちデータ帳 | お店・施設を探して保存</title>
+  <script>
+    // (#47続報) GitHub Pagesは_headersに対応していないため、index.htmlに
+    // Cache-Controlを指定できず、デフォルトで max-age=600（10分）キャッシュされる。
+    // デプロイ直後にページを通常リロードしても、ブラウザがキャッシュの古いHTML+JSを
+    // 取り出すため、古いコード（旧バンドル）が最長10分間動き続ける。
+    // 対策: ページロード時に最新HTMLをキャッシュバイパスでフェッチし、
+    // app-version が違えば appv パラメータ付きURLへ location.replace して自動再読み込み。
+    // （appv はキャッシュキーに効いてディスクキャッシュを回避し、urlState.jsは無視する）
+    // バージョン一致・フェッチ失敗の場合は何もしない（コストは約300バイトの1回のフェッチのみ）。
+    (function () {
+      try {
+        var meta = document.querySelector('meta[name="app-version"]');
+        if (!meta || !meta.content) return;
+        fetch(location.pathname, { cache: 'no-store', credentials: 'omit' })
+          .then(function (r) { return r.ok ? r.text() : null; })
+          .then(function (html) {
+            if (!html) return;
+            var m = html.match(/<meta name="app-version" content="([^"]+)"/);
+            if (m && m[1] && m[1] !== meta.content) {
+              var extra = (location.search || '').replace(/^\?/, '&');
+              location.replace(location.pathname + '?appv=' + encodeURIComponent(m[1]) + extra + (location.hash || ''));
+            }
+          })
+          .catch(function () { /* オフライン等は無視 */ });
+      } catch (e) { /* 無視 */ }
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>
