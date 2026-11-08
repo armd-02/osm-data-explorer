@@ -18,6 +18,31 @@ const initialState = {
   processing: false,
 }
 
+/**
+ * 指定候補で確定した行を構築する。
+ * 手動確定（CONFIRM_CANDIDATE）と自動確定（SET_MATCH_RESULTS）で
+ * 完全に同一の形（matchType / confirmed / matched のフィールド構成）にする。
+ */
+function buildConfirmedRow(row, candidateIdx) {
+  const candidate = row.candidates[candidateIdx]
+  return {
+    ...row,
+    matchType: candidate.match.type,
+    confirmed: true,
+    matched: {
+      id: candidate.result.id,
+      type: candidate.result.type,
+      name: candidate.result.name,
+      lat: candidate.result.lat,
+      lon: candidate.result.lon,
+      url: `https://www.openstreetmap.org/${candidate.result.type}/${candidate.result.id}`,
+      matchType: candidate.match.type,
+      matchedTag: candidate.match.tag,
+      matchedValue: candidate.match.value
+    }
+  }
+}
+
 function batchMatchReducer(state, action) {
   switch (action.type) {
     case 'SET_INPUT_TEXT':
@@ -59,8 +84,23 @@ function batchMatchReducer(state, action) {
         activeIndex: null,
         previewCandidate: null,
       }
-    case 'SET_MATCH_RESULTS':
-      return { ...state, matchResults: action.payload, matchRowAligned: !!action.rowAligned, selections: {}, activeIndex: null }
+    case 'SET_MATCH_RESULTS': {
+      // 候補のうち match.type === 'exact' のものがちょうど1件の行は、照合した時点で自動確定する
+      // 確定内容（matchType / confirmed / matched / selections）は手動確定 CONFIRM_CANDIDATE と同一の形
+      // 完全一致が0件（部分一致・類似のみ）または2件以上（曖昧）の行は従来どおり要確認のまま
+      const selections = {}
+      const results = (action.payload ?? []).map(r => {
+        const candidates = r.candidates ?? []
+        const exactIdx = candidates.findIndex(c => c.match?.type === 'exact')
+        const exactCount = candidates.filter(c => c.match?.type === 'exact').length
+        if (exactCount === 1) {
+          selections[r.index] = exactIdx
+          return buildConfirmedRow(r, exactIdx)
+        }
+        return r
+      })
+      return { ...state, matchResults: results, matchRowAligned: !!action.rowAligned, selections, activeIndex: null }
+    }
     case 'SET_PROCESSING':
       return { ...state, processing: action.payload }
     case 'SELECT_FACILITY':
@@ -73,23 +113,7 @@ function batchMatchReducer(state, action) {
       const row = state.matchResults.find(r => r.index === index)
       if (!row || !row.candidates[candidateIdx]) return state
 
-      const candidate = row.candidates[candidateIdx]
-      const updated = {
-        ...row,
-        matchType: candidate.match.type,
-        confirmed: true,
-        matched: {
-          id: candidate.result.id,
-          type: candidate.result.type,
-          name: candidate.result.name,
-          lat: candidate.result.lat,
-          lon: candidate.result.lon,
-          url: `https://www.openstreetmap.org/${candidate.result.type}/${candidate.result.id}`,
-          matchType: candidate.match.type,
-          matchedTag: candidate.match.tag,
-          matchedValue: candidate.match.value
-        }
-      }
+      const updated = buildConfirmedRow(row, candidateIdx)
       const newResults = state.matchResults.map(r => r.index === index ? updated : r)
       return {
         ...state,

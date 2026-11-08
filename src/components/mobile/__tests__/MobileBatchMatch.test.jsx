@@ -74,11 +74,7 @@ describe('MobileBatchMatch: 地図用CSVダウンロード', () => {
       expect(screen.getByText('3件中:')).toBeTruthy()
     })
 
-    // 「田中ラーメン」の候補を確定（行ラベルはbutton）
-    fireEvent.click(screen.getByRole('button', { name: /田中ラーメン/ }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
-
-    // 地図用CSVをダウンロード
+    // 完全一致が各1件 → 自動確定。地図用CSVをダウンロード
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
     expect(downloadFile).toHaveBeenCalledTimes(1)
     const [csv, filename] = downloadFile.mock.calls[0]
@@ -87,8 +83,8 @@ describe('MobileBatchMatch: 地図用CSVダウンロード', () => {
     expect(l).toEqual([
       'name,lat,lon,status,matched_name,osm_type,osm_id,osm_url,source',
       '田中ラーメン,34.700000,135.500000,確認済み,,node,node/101,https://www.openstreetmap.org/node/101,© OpenStreetMap contributors (ODbL)',
-      '山本カフェ,,,要確認,,,,,' ,
-      '鈴木薬局,,,要確認,,,,,'
+      '山本カフェ,34.710000,135.510000,確認済み,,way,way/202,https://www.openstreetmap.org/way/202,© OpenStreetMap contributors (ODbL)',
+      '鈴木薬局,34.720000,135.520000,確認済み,,node,node/303,https://www.openstreetmap.org/node/303,© OpenStreetMap contributors (ODbL)'
     ])
     expect(filename).toMatch(/^map-locations-\d{4}-\d{2}-\d{2}\.csv$/)
   })
@@ -123,8 +119,9 @@ describe('MobileBatchMatch: 入力・照合', () => {
     await waitFor(() => {
       expect(screen.getByText('田中ラーメン', { selector: 'span' })).toBeTruthy()
     })
-    expect(screen.getByText(/要確認 2/)).toBeTruthy()
-    expect(screen.getByText(/確認済 0/)).toBeTruthy()
+    // 完全一致が各1件 → 自動確定
+    expect(screen.getByText(/確認済 2/)).toBeTruthy()
+    expect(screen.getByText(/要確認 0/)).toBeTruthy()
     expect(screen.getByText(/候補なし 0/)).toBeTruthy()
   })
 })
@@ -140,23 +137,24 @@ describe('MobileBatchMatch: 施設選択・候補・確定/取消', () => {
     fireEvent.click(screen.getByRole('button', { name: /田中ラーメン/ }))
   }
 
-  it('施設を選択するとOSM候補（完全一致）と確定ボタンが表示される', async () => {
+  it('施設を選択するとOSM候補（完全一致）が表示され、自動確定済みの取り消しボタンが出る', async () => {
     await matchAndSelect()
     expect(screen.getByText('完全一致')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '確定' })).toBeTruthy()
+    // 完全一致が1件 → 照合時に自動確定済み（「取消」ボタンが代替表示）
+    expect(screen.getByRole('button', { name: '✓ 取消' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '確定' })).toBeNull()
     expect(screen.getByRole('button', { name: /地図で確認/ })).toBeTruthy()
     // ミニ地図も表示される
     expect(screen.getByTestId('mini-map')).toBeTruthy()
   })
 
-  it('確定すると✓確認済になり、取消で解除できる', async () => {
+  it('自動確定済みの行は✓確認済表示、取消で要確認に戻れる', async () => {
     await matchAndSelect()
-    fireEvent.click(screen.getByRole('button', { name: '確定' }))
-    // 施設行が確認済バッジに
-    expect(await screen.findByText('✓ 確認済')).toBeTruthy()
-    // サマリーが更新される
+    // 完全一致が1件 → 照合時に自動確定済み
+    expect(screen.getByText('✓ 確認済')).toBeTruthy()
+    // サマリー
     expect(screen.getByText(/確認済 1/)).toBeTruthy()
-    // 地図用CSVボタンの件数も更新
+    // 地図用CSVボタンの件数
     expect(screen.getByRole('button', { name: /地図用CSV（確定 1 件）/ })).toBeTruthy()
 
     // 取消 → 要確認に戻る
@@ -186,15 +184,15 @@ describe('MobileBatchMatch: 状態保持 (#31)', () => {
         <MobileBatchMatch />
       </KeepMountedHarness>
     )
-    // 入力→照合→確定
+    // 入力→照合（完全一致1件 → 自動確定）
     fireEvent.change(screen.getByRole('textbox', { name: /店名リスト/ }), { target: { value: '田中ラーメン' } })
     fireEvent.click(screen.getByRole('button', { name: /照合実行/ }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /田中ラーメン/ })).toBeTruthy()
     })
     fireEvent.click(screen.getByRole('button', { name: /田中ラーメン/ }))
-    fireEvent.click(screen.getByRole('button', { name: '確定' }))
-    expect(await screen.findByText('✓ 確認済')).toBeTruthy()
+    // 完全一致が1件 → 自動確定済み
+    expect(screen.getByText('✓ 確認済')).toBeTruthy()
 
     // 別タブへ（コンポーネントはhidden化＝アンマウントされない）
     rerender(

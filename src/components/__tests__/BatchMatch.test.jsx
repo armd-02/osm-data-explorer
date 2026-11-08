@@ -228,8 +228,8 @@ describe('BatchMatch: CSV取込→照合（既存フローへの接続）', () =
     expect(screen.getAllByText('田中ラーメン').length).toBeGreaterThan(0)
     expect(screen.getAllByText('山本カフェ').length).toBeGreaterThan(0)
     expect(screen.getAllByText('鈴木薬局').length).toBeGreaterThan(0)
-    // 照合直後は未確定（確定は候補選択→「確定」クリックで付く）なので3件とも要確認
-    expect(screen.getByText(/要確認 3/)).toBeTruthy()
+    // 完全一致が各1件 → 自動確定されるため3件とも確認済
+    expect(screen.getByText(/確認済 3/)).toBeTruthy()
   })
 
 it('新しいCSVを取込ると、以前の照合結果はstaleとして破棄される', async () => {
@@ -363,7 +363,7 @@ describe('BatchMatch: CSV取込（エッジケース）', () => {
 })
 
 describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', () => {
-  it('CSV取込→照合→確定: 元のCSVの列・順序を保ち、lat/lon/osmidを追加する', async () => {
+  it('CSV取込→照合（自動確定）: 元のCSVの列・順序を保ち、lat/lon/osmidを追加する', async () => {
     render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] }><BatchMatch /></Harness>)
     uploadCsv(MULTI_COL_CSV)
     await waitFor(() => {
@@ -372,15 +372,10 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     fireEvent.click(screen.getByLabelText('name'))
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
 
-    // 「田中ラーメン」の行を選択して候補を確定
-    // 行ラベルはspan（matched名はpタグ）なのでspanに絞る
-    fireEvent.click(screen.getByText('田中ラーメン', { selector: 'span' }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
-
-    // 地図用CSVをダウンロード
+    // 完全一致が各1件 → 自動確定。地図用CSVをダウンロード
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
     expect(downloadFile).toHaveBeenCalledTimes(1)
     const [csv, filename] = downloadFile.mock.calls[0]
@@ -388,8 +383,8 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     expect(l).toEqual([
       'name,phone,addr,lat,lon,osmid',
       '田中ラーメン,06-1111-1111,大阪市,34.700000,135.500000,node/101',
-      '山本カフェ,06-2222-2222,神戸市,,,' ,
-      '鈴木薬局,06-3333-3333,堺市,,,'
+      '山本カフェ,06-2222-2222,神戸市,34.710000,135.510000,way/202',
+      '鈴木薬局,06-3333-3333,堺市,34.720000,135.520000,node/303'
     ])
     expect(filename).toMatch(/^map-locations-\d{4}-\d{2}-\d{2}\.csv$/)
   })
@@ -404,19 +399,17 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     fireEvent.click(screen.getByLabelText('name'))
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
 
-    // 「鈴木薬局」（元のCSVの3行目・導出位置2）を確定
-    fireEvent.click(screen.getByText('鈴木薬局', { selector: 'span' }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
+    // 完全一致が各1件 → 自動確定。地図用CSVをダウンロード
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
 
     const [csv] = downloadFile.mock.calls[0]
     const l = csv.replace(/^\uFEFF/, '').trimEnd().split('\n')
     expect(l).toEqual([
       'name,addr,lat,lon,osmid',
-      '田中ラーメン,大阪市,,,' ,
+      '田中ラーメン,大阪市,34.700000,135.500000,node/101',
       ',,,,' ,
       '鈴木薬局,堺市,34.720000,135.520000,node/303'
     ])
@@ -451,15 +444,16 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '田中ラーメン' } })
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
+    // 完全一致が1件 → 自動確定。地図用CSVをダウンロード
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
 
     const [csv] = downloadFile.mock.calls[0]
     const l = csv.replace(/^\uFEFF/, '').trimEnd().split('\n')
     expect(l[0]).toBe('name,lat,lon,status,matched_name,osm_type,osm_id,osm_url,source')
     expect(l[1]).toContain('田中ラーメン')
-    expect(l[1]).toContain('要確認')
+    expect(l[1]).toContain('確認済み')
     expect(l[1].split(',')).toHaveLength(9)
   })
 
@@ -472,12 +466,10 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     fireEvent.click(screen.getByLabelText('name'))
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
 
-    // 「田中ラーメン」の行を選択して候補を確定
-    fireEvent.click(screen.getByText('田中ラーメン', { selector: 'span' }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
+    // 完全一致が各1件 → 自動確定。地図用CSVをダウンロード
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
 
     const [csv] = downloadFile.mock.calls[0]
@@ -485,8 +477,8 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     expect(l).toEqual([
       'name,addr,lat,lon,osmid',
       '田中ラーメン,大阪市,34.700000,135.500000,node/101',
-      '山本カフェ,神戸市,,,' ,
-      '鈴木薬局,堺市,,,'
+      '山本カフェ,神戸市,34.710000,135.510000,way/202',
+      '鈴木薬局,堺市,34.720000,135.520000,node/303'
     ])
   })
 
@@ -499,12 +491,8 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     fireEvent.click(screen.getByLabelText('name'))
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
-
-    // 「田中ラーメン」の候補を確定
-    fireEvent.click(screen.getByText('田中ラーメン', { selector: 'span' }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
 
     // textareaを編集: 先頭行を削除してCSV導出リストと一致させない
     fireEvent.change(screen.getByRole('textbox'), {
@@ -512,6 +500,7 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     })
 
     // ダウンロード: 行の対応が保証できない → 従来の固定9列形式
+    // 完全一致が各1件 → 自動確定済みの3件とも「確認済み」になる
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
     expect(downloadFile).toHaveBeenCalledTimes(1)
     const [csv] = downloadFile.mock.calls[0]
@@ -519,8 +508,8 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     expect(l).toEqual([
       'name,lat,lon,status,matched_name,osm_type,osm_id,osm_url,source',
       '田中ラーメン,34.700000,135.500000,確認済み,,node,node/101,https://www.openstreetmap.org/node/101,© OpenStreetMap contributors (ODbL)',
-      '山本カフェ,,,要確認,,,,,' ,
-      '鈴木薬局,,,要確認,,,,,'
+      '山本カフェ,34.710000,135.510000,確認済み,,way,way/202,https://www.openstreetmap.org/way/202,© OpenStreetMap contributors (ODbL)',
+      '鈴木薬局,34.720000,135.520000,確認済み,,node,node/303,https://www.openstreetmap.org/node/303,© OpenStreetMap contributors (ODbL)'
     ])
   })
 
@@ -533,16 +522,15 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     fireEvent.click(screen.getByLabelText('name'))
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
-    fireEvent.click(screen.getByText('田中ラーメン', { selector: 'span' }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
 
     // 末尾に改行を追加（parseNameList は空行を捨てるため依然一致）
     fireEvent.change(screen.getByRole('textbox'), {
       target: { value: '田中ラーメン\n山本カフェ\n鈴木薬局\n' }
     })
 
+    // 完全一致が各1件 → 自動確定。元のCSV形式で出力される
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
     expect(downloadFile).toHaveBeenCalledTimes(1)
     const [csv] = downloadFile.mock.calls[0]
@@ -551,8 +539,8 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     expect(l).toEqual([
       'name,phone,addr,lat,lon,osmid',
       '田中ラーメン,06-1111-1111,大阪市,34.700000,135.500000,node/101',
-      '山本カフェ,06-2222-2222,神戸市,,,' ,
-      '鈴木薬局,06-3333-3333,堺市,,,'
+      '山本カフェ,06-2222-2222,神戸市,34.710000,135.510000,way/202',
+      '鈴木薬局,06-3333-3333,堺市,34.720000,135.520000,node/303'
     ])
   })
 
@@ -569,11 +557,9 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
 
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
-    fireEvent.click(screen.getByText('田中ラーメン', { selector: 'span' }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
-
+    // 完全一致が各1件 → 自動確定。地図用CSVをダウンロード
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
     expect(downloadFile).toHaveBeenCalledTimes(1)
     const [csv] = downloadFile.mock.calls[0]
@@ -581,8 +567,8 @@ describe('BatchMatch: 地図用CSVダウンロード（取込CSVフロー）', (
     expect(l).toEqual([
       'col_1,lat,lon,osmid',
       '田中ラーメン,34.700000,135.500000,node/101',
-      '山本カフェ,,,' ,
-      '鈴木薬局,,,'
+      '山本カフェ,34.710000,135.510000,way/202',
+      '鈴木薬局,34.720000,135.520000,node/303'
     ])
   })
 })
@@ -597,14 +583,10 @@ describe('BatchMatch: 地図用CSVダウンロード（貼り付けフロー）'
     })
     fireEvent.click(screen.getByRole('button', { name: '照合' }))
     await waitFor(() => {
-      expect(screen.getByText(/要確認 \d+/)).toBeTruthy()
+      expect(screen.getByText(/確認済 \d+/)).toBeTruthy()
     })
 
-    // 「田中ラーメン」の候補を確定
-    fireEvent.click(screen.getByText('田中ラーメン', { selector: 'span' }))
-    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
-
-    // 地図用CSVをダウンロード
+    // 完全一致が各1件 → 自動確定。地図用CSVをダウンロード
     fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
     expect(downloadFile).toHaveBeenCalledTimes(1)
     const [csv, filename] = downloadFile.mock.calls[0]
@@ -613,8 +595,8 @@ describe('BatchMatch: 地図用CSVダウンロード（貼り付けフロー）'
     expect(l).toEqual([
       'name,lat,lon,status,matched_name,osm_type,osm_id,osm_url,source',
       '田中ラーメン,34.700000,135.500000,確認済み,,node,node/101,https://www.openstreetmap.org/node/101,© OpenStreetMap contributors (ODbL)',
-      '山本カフェ,,,要確認,,,,,' ,
-      '鈴木薬局,,,要確認,,,,,'
+      '山本カフェ,34.710000,135.510000,確認済み,,way,way/202,https://www.openstreetmap.org/way/202,© OpenStreetMap contributors (ODbL)',
+      '鈴木薬局,34.720000,135.520000,確認済み,,node,node/303,https://www.openstreetmap.org/node/303,© OpenStreetMap contributors (ODbL)'
     ])
     expect(filename).toMatch(/^map-locations-\d{4}-\d{2}-\d{2}\.csv$/)
   })

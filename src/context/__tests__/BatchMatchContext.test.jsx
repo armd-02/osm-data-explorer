@@ -58,6 +58,35 @@ function readState() {
   return JSON.parse(screen.getByTestId('probe-state').textContent)
 }
 
+/** 特定行の詳細（confirmed/matchType/matched/selections）を出力するprobe（確定の形を検証用） */
+function DetailProbe({ actions = [], index = 0 }) {
+  const { state, dispatch } = useBatchMatch()
+  useEffect(() => {
+    actions.forEach((a) => dispatch(a))
+  }, [])
+  const row = state.matchResults?.find((r) => r.index === index)
+  return (
+    <pre data-testid="probe-detail">{JSON.stringify({
+      confirmed: row?.confirmed ?? null,
+      matchType: row?.matchType ?? null,
+      matched: row?.matched ?? null,
+      selections: state.selections,
+    })}</pre>
+  )
+}
+
+function renderDetailProbe(actions = [], index = 0) {
+  return render(
+    <BatchMatchProvider>
+      <DetailProbe actions={actions} index={index} />
+    </BatchMatchProvider>
+  )
+}
+
+function readDetail() {
+  return JSON.parse(screen.getByTestId('probe-detail').textContent)
+}
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -78,6 +107,48 @@ const MATCH_RESULTS = [
     matched: null, confirmed: false
   }
 ]
+
+/** 完全一致候補が2件ある行（曖昧: ユーザーが選ぶべきなので自動確定されない） */
+const TWO_EXACT_ROW = {
+  index: 1, inputName: '田中ラーメン', matchType: 'exact',
+  candidates: [
+    {
+      result: { id: 101, type: 'node', name: '田中ラーメン', lat: 34.7, lon: 135.5 },
+      match: { type: 'exact', tag: 'name', value: '田中ラーメン' }
+    },
+    {
+      result: { id: 202, type: 'way', name: '田中ラーメン', lat: 34.8, lon: 135.6 },
+      match: { type: 'exact', tag: 'name', value: '田中ラーメン' }
+    }
+  ],
+  matched: {
+    id: 101, type: 'node', name: '田中ラーメン', lat: 34.7, lon: 135.5,
+    url: 'https://www.openstreetmap.org/node/101',
+    matchType: 'exact', matchedTag: 'name', matchedValue: '田中ラーメン'
+  },
+  confirmed: false
+}
+
+/** 完全一致が0件の行（部分一致・類似のみ: ユーザーが選ぶべきなので自動確定されない） */
+const NO_EXACT_ROW = {
+  index: 1, inputName: '鈴木薬局', matchType: 'partial',
+  candidates: [
+    {
+      result: { id: 303, type: 'node', name: '鈴木薬局（南口）', lat: 35.1, lon: 136.9 },
+      match: { type: 'partial', tag: 'name', value: '鈴木薬局（南口）' }
+    },
+    {
+      result: { id: 404, type: 'node', name: '鈴木ドラッグ', lat: 35.2, lon: 137.0 },
+      match: { type: 'similar', tag: 'name', value: '鈴木ドラッグ', distance: 1 }
+    }
+  ],
+  matched: {
+    id: 303, type: 'node', name: '鈴木薬局（南口）', lat: 35.1, lon: 136.9,
+    url: 'https://www.openstreetmap.org/node/303',
+    matchType: 'partial', matchedTag: 'name', matchedValue: '鈴木薬局（南口）'
+  },
+  confirmed: false
+}
 
 describe('BatchMatchContext: 初期状態', () => {
   it('csvDataはnull、csvKeyColsは空配列', () => {
@@ -206,14 +277,15 @@ describe('BatchMatchContext: 行揃え結果（matchRowAligned）', () => {
 })
 
 describe('BatchMatchContext: 既存アクションの回帰', () => {
-  it('SET_MATCH_RESULTS: 結果を設定し、selections/activeIndexをリセットする', () => {
+  it('SET_MATCH_RESULTS: 完全一致が1件の行は自動確定される', () => {
     renderProbe([
       { type: 'SELECT_FACILITY', payload: 1 },
       { type: 'SET_MATCH_RESULTS', payload: MATCH_RESULTS },
     ])
     const s = readState()
-    expect(s.matchResults).toEqual([{ index: 1, confirmed: false }])
-    expect(s.selections).toEqual({})
+    // 完全一致候補がちょうど1件 → 自動確定（confirmed: true）
+    expect(s.matchResults).toEqual([{ index: 1, confirmed: true }])
+    expect(s.selections).toEqual({ 1: 0 })
     expect(s.activeIndex).toBeNull()
   })
 
@@ -250,5 +322,56 @@ describe('BatchMatchContext: 既存アクションの回帰', () => {
     expect(s.csv).toBeNull()
     expect(s.csvKeyCols).toEqual([])
     expect(s.matchResults).toBeNull()
+  })
+})
+
+describe('BatchMatchContext: SET_MATCH_RESULTSでの自動確定（完全一致がちょうど1件）', () => {
+  it('完全一致が1件だけの行は SET_MATCH_RESULTS 直後に confirmed: true になる（matched がその候補を指し、selections に記録される）', () => {
+    renderDetailProbe([{ type: 'SET_MATCH_RESULTS', payload: MATCH_RESULTS }], 1)
+    const s = readDetail()
+    expect(s.confirmed).toBe(true)
+    expect(s.matchType).toBe('exact')
+    // matched は完全一致候補から構築される（手動確定 CONFIRM_CANDIDATE と同一の形）
+    expect(s.matched).toEqual({
+      id: 101,
+      type: 'node',
+      name: '田中ラーメン',
+      lat: 34.7,
+      lon: 135.5,
+      url: 'https://www.openstreetmap.org/node/101',
+      matchType: 'exact',
+      matchedTag: 'name',
+      matchedValue: '田中ラーメン',
+    })
+    // selections に完全一致候補のインデックスが記録される
+    expect(s.selections).toEqual({ 1: 0 })
+  })
+
+  it('完全一致が2件ある行は未確定のままになる', () => {
+    renderDetailProbe([{ type: 'SET_MATCH_RESULTS', payload: [TWO_EXACT_ROW] }], 1)
+    const s = readDetail()
+    // 未確定のまま（confirmed: false）、selections にもその行のインデックスは記録されない
+    expect(s.confirmed).toBe(false)
+    expect(s.selections).toEqual({})
+    // 行は変更されない（matched は従来どおり先頭候補のまま）
+    expect(s.matched).toEqual({
+      id: 101, type: 'node', name: '田中ラーメン', lat: 34.7, lon: 135.5,
+      url: 'https://www.openstreetmap.org/node/101',
+      matchType: 'exact', matchedTag: 'name', matchedValue: '田中ラーメン'
+    })
+  })
+
+  it('完全一致が0件の行は未確定のままになる', () => {
+    renderDetailProbe([{ type: 'SET_MATCH_RESULTS', payload: [NO_EXACT_ROW] }], 1)
+    const s = readDetail()
+    // 未確定のまま（confirmed: false）、selections にもその行のインデックスは記録されない
+    expect(s.confirmed).toBe(false)
+    expect(s.selections).toEqual({})
+    // 行は変更されない（matched は従来どおり先頭候補のまま）
+    expect(s.matched).toEqual({
+      id: 303, type: 'node', name: '鈴木薬局（南口）', lat: 35.1, lon: 136.9,
+      url: 'https://www.openstreetmap.org/node/303',
+      matchType: 'partial', matchedTag: 'name', matchedValue: '鈴木薬局（南口）'
+    })
   })
 })

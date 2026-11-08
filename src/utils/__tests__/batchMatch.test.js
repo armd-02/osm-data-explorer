@@ -302,3 +302,73 @@ describe('日本語の名称表記揺れ（柿しぶ／柿渋、助詞「の」�
     expect(matchName('山家', [shop(307, '山の家')]).matchType).toBe('none')
   })
 })
+
+describe('短い無関係な名称が候補にならない（最小長ガード）', () => {
+  const shop = (id, name) => ({ type: 'node', id, name, lat: 35, lon: 139, tags: { name } })
+
+  it('1文字の名前は、その文字を含む無関係な名前と部分一致しない', () => {
+    expect(matchName('A', [shop(201, 'Cafe Aoba'), shop(202, 'Kaguraya')]).matchType).toBe('none')
+    expect(matchName('A', [shop(212, 'AA')]).matchType).toBe('none')
+    expect(matchName('AA', [shop(213, 'AAA')]).matchType).toBe('partial')
+  })
+
+  it('1文字の完全一致は従来通り有効（部分一致ガードの影響を受けない）', () => {
+    const res = matchName('A', [shop(214, 'A')])
+    expect(res.matchType).toBe('exact')
+    expect(res.matched.id).toBe(214)
+  })
+
+  it('かな1音節（ローマ字2文字以下）は、無関係なローマ字名の類似候補にならない', () => {
+    expect(matchName('ス', [shop(203, 'sushibar')]).matchType).toBe('none')
+    expect(matchName('カ', [shop(204, 'kaguraya'), shop(205, 'kafeteria')]).matchType).toBe('none')
+    expect(matchName('ん', [shop(206, 'nonbiri cafe')]).matchType).toBe('none')
+  })
+
+  it('正規化が空になるタグ値（記号のみ）は部分一致にならない', () => {
+    expect(matchName('田中', [shop(207, '・')]).matchType).toBe('none')
+  })
+
+  it('実利用報告ケース: 「みんなの図書館さいくる」に対し「あん」「u」は候補にならない', () => {
+    const res = matchName('みんなの図書館さいくる', [
+      shop(2310996125, 'あん'),
+      shop(6117195199, 'u'),
+    ])
+    expect(res.matchType).toBe('none')
+    expect(res.candidates).toEqual([])
+  })
+
+  it('「みんなの図書館さいくる」+「あん」「u」が混在しても候補は完全一致の1件のみ', () => {
+    const res = matchName('みんなの図書館さいくる', [
+      shop(2310996125, 'あん'),
+      shop(6117195199, 'u'),
+      shop(8000000001, 'みんなの図書館さいくる'),
+    ])
+    expect(res.matchType).toBe('exact')
+    expect(res.matched.id).toBe(8000000001)
+    expect(res.candidates).toHaveLength(1)
+    expect(res.candidates[0].match.type).toBe('exact')
+    expect(res.candidates[0].match.value).toBe('みんなの図書館さいくる')
+  })
+
+  it('2文字の正当な部分一致は維持される（田中 ⊂ ラーメン屋田中）', () => {
+    const res = matchName('田中', [shop(208, 'ラーメン屋田中')])
+    expect(res.matchType).toBe('partial')
+    expect(res.matched.id).toBe(208)
+  })
+
+  it('ローマ字4文字（境界値）の内包は類似として有効（カフ ⊂ kafu tea）', () => {
+    const res = matchName('カフ', [shop(209, 'kafu tea')])
+    expect(res.matchType).toBe('similar')
+    expect(res.matched.id).toBe(209)
+  })
+
+  it('ローマ字4文字未満の内包は類似とみなさない（ソウ vs soushop）', () => {
+    expect(matchName('ソウ', [shop(211, 'soushop')]).matchType).toBe('none')
+  })
+
+  it('かな／ローマ字交差的な正当な類似は維持される（すし ⊂ sushi ichigo）', () => {
+    const res = matchName('すし', [shop(210, 'sushi ichigo')])
+    expect(res.matchType).toBe('similar')
+    expect(res.matched.id).toBe(210)
+  })
+})

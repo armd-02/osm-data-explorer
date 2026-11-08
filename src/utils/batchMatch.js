@@ -43,6 +43,25 @@ function getFuzzyThreshold(shorterLen) {
   return -1 // 3文字以下は類似検索しない
 }
 
+// 部分一致（正規化名の包含判定）で、含まれる側（短い側）に要求する最小長。
+// 1文字の名前は、その文字を含むいかなる無関係な名前にも部分一致してしまうため、2文字以上を要求する。
+const MIN_PARTIAL_LEN = 2
+
+// ローマ字の包含判定で、含まれる側（短い側）に要求する最小長。
+// 4文字未満のローマ字（例: "an""su""sou""ka"）は店名を特定するには曖昧すぎるため、4文字以上を要求する。
+const MIN_ROMAJI_LEN = 4
+
+/**
+ * 最小長ガード付きの部分文字列一致判定
+ * 短い側が minLen 文字未満の場合は false を返す（無関係な短い名称が候補にならないようにする）。
+ * 空文字列は包含判定の対象外（"x".includes("") が true になるのを防ぐ）。
+ */
+function substringMatch(a, b, minLen) {
+  if (!a || !b) return false
+  if (Math.min(a.length, b.length) < minLen) return false
+  return b.includes(a) || a.includes(b)
+}
+
 /**
  * 編集距離による類似候補を検出
  * 正規化後の名称同士でレーベンシュタイン距離を計算し、閾値以内ならsimilar候補とする
@@ -103,9 +122,9 @@ export function matchName(name, results) {
 
       if (normVal === normName || (romVal && romName && romVal === romName)) {
         type = 'exact'
-      } else if (normVal.includes(normName) || normName.includes(normVal)) {
+      } else if (substringMatch(normName, normVal, MIN_PARTIAL_LEN)) {
         type = 'partial'
-      } else if (romVal && romName && (romVal.includes(romName) || romName.includes(romVal))) {
+      } else if (romVal && romName && substringMatch(romName, romVal, MIN_ROMAJI_LEN)) {
         type = 'similar'
       } else if (fuzzyName.length >= 6 && fuzzyName === fuzzyVal) {
         // 語の表記揺れ・接続助詞の省略は「完全一致」としない。
