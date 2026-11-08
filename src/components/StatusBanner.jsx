@@ -10,19 +10,9 @@ const ERROR_LABELS = {
   invalid_query: 'クエリエラー'
 }
 
-function StatusBanner({ onViewResults = null }) {
+function StatusBanner() {
   const { state } = useApp()
   const { status, error, errorType, errorSuggestion, results, fetchMeta } = state
-
-  // モバイルで検索後に結果パネルへ直接スクロールするための導線
-  const scrollToResults = () => {
-    if (onViewResults) {
-      // (#59) モバイル: 「結果を見る」で一覧タブへ切替
-      onViewResults()
-      return
-    }
-    document.getElementById('results-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
 
   if (status === 'loading') {
     return (
@@ -93,13 +83,6 @@ function StatusBanner({ onViewResults = null }) {
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={scrollToResults}
-          className="lg:hidden mt-1.5 w-full py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          結果を見る ↓
-        </button>
       </div>
     )
   }

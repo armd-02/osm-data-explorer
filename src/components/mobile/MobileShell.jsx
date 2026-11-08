@@ -76,7 +76,7 @@ export default function MobileShell() {
         <h1 className="text-sm font-semibold text-slate-800">まちデータ帳</h1>
       </header>
 
-      <StatusBanner onViewResults={() => setTab('list')} />
+      <StatusBanner />
 
       <main className="flex-1 min-h-0 relative">
         <div className="absolute inset-0" {...panelProps('search')}>

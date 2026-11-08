@@ -31,6 +31,8 @@
  * - Marker: setLngLat/addTo/remove/setPopup/getPopup
  * - Popup: setLngLat/setDOMElement/setText/addTo/open/close/remove
  * - NavigationControl: addTo/remove
+ * - AttributionControl: コンストラクタで _state.controls に登録される
+ *   （MiniLocationMap の compact attribution 検証用）
  *
  * 注: vi.mockファクトリはファイル先頭にホイスされるため、共通モックへの
  * 参照はファクトリ内での動的import（await import(...)）で行うこと。
@@ -38,9 +40,10 @@
 
 export function createMapLibreMock(options = {}) {
   const state = {
-    maps: [],    // 生成されたMapインスタンス（生成順）
-    markers: [], // 生成されたMarkerインスタンス（生成順）
-    popups: [],  // 生成されたPopupインスタンス（生成順）
+    maps: [],     // 生成されたMapインスタンス（生成順）
+    markers: [],  // 生成されたMarkerインスタンス（生成順）
+    popups: [],   // 生成されたPopupインスタンス（生成順）
+    controls: [], // 生成されたAttributionControlインスタンス（生成順）
   }
 
   const bbox = options.bbox || { south: 34.8, west: 135.4, north: 34.9, east: 135.6 }
@@ -212,6 +215,16 @@ export function createMapLibreMock(options = {}) {
     return control
   }
 
+  function AttributionControl(controlOptions) {
+    const control = {
+      _options: controlOptions || {},
+      addTo: () => control,
+      remove: () => control,
+    }
+    state.controls.push(control)
+    return control
+  }
+
   function LngLatBounds() {
     return bounds
   }
@@ -221,6 +234,7 @@ export function createMapLibreMock(options = {}) {
     Marker,
     Popup,
     NavigationControl,
+    AttributionControl,
     LngLatBounds,
     // テストから querySourceFeatures の戻り値を動的に設定できる
     setQuerySourceFeatures(fn) {
@@ -231,6 +245,7 @@ export function createMapLibreMock(options = {}) {
       state.maps.length = 0
       state.markers.length = 0
       state.popups.length = 0
+      state.controls.length = 0
       state._querySourceFeatures = null
     },
     _state: state,

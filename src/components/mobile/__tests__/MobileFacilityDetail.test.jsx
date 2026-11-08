@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react'
 import MobileFacilityDetail from '../MobileFacilityDetail'
 
@@ -11,7 +11,22 @@ import MobileFacilityDetail from '../MobileFacilityDetail'
  * - 電話はtel:リンク、Webはtarget=_blank + rel=noopener
  * - OSMリンク・タグ一覧（<details>折りたたみ）
  * - 「地図で見る」（座標がある場合のみ）と「閉じる」
+ * (#62)
+ * - 座標がある場合、シート上部に位置マップ（MiniLocationMap）＋マーカー
+ * - 座標がない場合はマップも非表示
  */
+
+// vi.mockファクトリはファイル先頭にホイスされるため、共通モックは動的importで参照。
+const mockState = vi.hoisted(() => ({ api: null }))
+vi.mock('maplibre-gl', async () => {
+  const mod = await import('../../../test/maplibreMock')
+  mockState.api = mod.createMapLibreMock()
+  return { default: mockState.api }
+})
+
+beforeEach(() => {
+  if (mockState.api) mockState.api.resetState()
+})
 
 afterEach(() => cleanup())
 
@@ -152,6 +167,36 @@ describe('MobileFacilityDetail: iD編集導線 (B3)', () => {
     const dialog = screen.getByRole('dialog')
     const idLink = within(dialog).getByRole('link', { name: /iDで編集/ })
     expect(idLink.getAttribute('href')).toBe('https://www.openstreetmap.org/edit?node=way%2F8')
+  })
+})
+
+describe('MobileFacilityDetail: 位置マップ（#62）', () => {
+  it('座標がある場合、施設座標を中心に位置マップが表示される', () => {
+    renderDetail()
+    const dialog = screen.getByRole('dialog')
+    // マップ本体（role=img）が存在する
+    const mapEl = within(dialog).getByRole('img')
+    expect(mapEl).toBeTruthy()
+    // モック経由でMap作成の座標・マーカーを検証
+    const map = mockState.api._state.maps[0]
+    expect(map).toBeTruthy()
+    expect(map._options.center).toEqual([135.5, 34.85]) // [lng, lat]順
+    expect(mockState.api._state.markers[0]._lngLat).toEqual([135.5, 34.85])
+  })
+
+  it('座標がない要素では位置マップも非表示', () => {
+    renderDetail({ type: 'node', id: 9, tags: { amenity: 'bench' } })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).queryByRole('img')).toBeNull()
+    expect(mockState.api._state.maps).toHaveLength(0)
+  })
+
+  it('位置マップの追加で既存の3ボタン（地図で見る/iDで編集/閉じる）は維持される', () => {
+    renderDetail()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: '地図で見る' })).toBeTruthy()
+    expect(within(dialog).getByRole('link', { name: /iDで編集/ })).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: '閉じる' })).toBeTruthy()
   })
 })
 

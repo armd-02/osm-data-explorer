@@ -2,6 +2,7 @@ import React from 'react'
 import { facilityName, formatAddress, safeWebsite } from '../../utils/facilityLabels'
 import { parseAccessibility } from '../../utils/accessibility'
 import { buildIdElementUrl, buildOsmElementUrl } from '../../utils/editLinks'
+import MiniLocationMap from './MiniLocationMap'
 
 /**
  * (#59 / #61) 施設詳細ボトムシート
@@ -9,6 +10,8 @@ import { buildIdElementUrl, buildOsmElementUrl } from '../../utils/editLinks'
  * 主情報: 名前・住所・電話・Webサイト・営業時間（OSMに登録済みの情報のみ表示）
  * (#61) バリアフリー情報: 車椅子・トイレ・駐車・エレベーター等を日本語解釈して表示
  * 補助情報: OSM ID・座標・タグ一覧（折りたたみ）
+ * (#62) 位置マップ: 座標がある場合、ボトムシート上部に施設位置を示す
+ *        小型マップ（MiniLocationMap）＋マーカーを表示する
  * 主ナビゲーションのタブではなく、施設カード／地図マーカーから開くオーバーレイ。
  */
 export default function MobileFacilityDetail({ detail, onClose, onShowOnMap }) {
@@ -41,6 +44,10 @@ export default function MobileFacilityDetail({ detail, onClose, onShowOnMap }) {
         </div>
 
         <div className="overflow-y-auto px-4 py-3 space-y-3 min-h-0">
+          {/* (#62) 位置マップ: 施設座標を中心にマーカー表示（非インタラクティブ） */}
+          {hasCoords && (
+            <MiniLocationMap lng={result.lon} lat={result.lat} />
+          )}
           {address && <p className="text-sm text-slate-700">📍 {address}</p>}
           {phone && (
             <a href={`tel:${phone}`} className="inline-flex items-center gap-1.5 text-sm text-primary-600">
