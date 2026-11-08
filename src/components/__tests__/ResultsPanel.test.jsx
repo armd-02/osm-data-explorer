@@ -8,10 +8,14 @@
  */
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { AppContext } from '../../context/AppContext'
 import { appReducer, createInitialState } from '../../state/appReducer'
+import { BatchMatchProvider } from '../../context/BatchMatchContext.jsx'
 import ResultsPanel from '../ResultsPanel'
+import { downloadFile } from '../../utils/export'
+
+vi.mock('../../utils/export', () => ({ downloadFile: vi.fn() }))
 
 // 実際のOverpass正規化と同様に tags.name → 顶层name にコピーする
 const withWebsite = { type: 'node', id: 1, name: 'カフェA', tags: { amenity: 'cafe', website: 'https://cafe.example.jp', name: 'カフェA' } }
@@ -29,7 +33,9 @@ function Harness({ preActions = [], log = [] }) {
   }
   return (
     <AppContext.Provider value={{ state, dispatch }}>
-      <ResultsPanel />
+      <BatchMatchProvider>
+        <ResultsPanel />
+      </BatchMatchProvider>
     </AppContext.Provider>
   )
 }
@@ -312,5 +318,348 @@ describe('ResultsPanel: カテゴリ選択肢は取得データに基づいて�
     expect(select.value).toBe('hospital')
     const optTexts = [...select.options].map((o) => o.textContent)
     expect(optTexts).toContain('病院・クリニック（0件）')
+  })
+})
+
+// ─── CSV-osmid 照合機能 ───
+
+describe('ResultsPanel: CSVアップロード', () => {
+  // 多列CSV（name列 + phone列 + addr列）
+  const MULTI_COL_CSV = 'name,phone,addr\n田中ラーメン,06-1111-1111,大阪市北区梅田1-1\n山本カフェ,06-2222-2222,大阪市西区南堀江2-2\n鈴木薬局,06-3333-3333,大阪市中央区鈴木3-3'
+  // 1列CSV
+  const SINGLE_COL_CSV = '田中ラーメン\n山本カフェ\n鈴木薬局'
+
+  const OSM_RESULTS = [
+    { type: 'node', id: 101, lat: 34.7, lon: 135.5, tags: { name: '田中ラーメン', amenity: 'restaurant' } },
+    { type: 'node', id: 202, lat: 34.71, lon: 135.51, tags: { name: '山本カフェ', shop: 'cafe' } },
+    { type: 'node', id: 303, lat: 34.72, lon: 135.52, tags: { name: '鈴木薬局', amenity: 'pharmacy' } },
+  ]
+
+  function uploadCsv(csvText, fileName = 'test.csv') {
+    const file = new File([csvText], fileName, { type: 'text/csv' })
+    const input = screen.getByLabelText(/CSVアップロード/)
+    fireEvent.change(input, { target: { files: [file] } })
+  }
+
+  it('CSVアップロードボタンが表示される', () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    expect(screen.getByText(/CSVアップロード/)).toBeTruthy()
+  })
+
+  it('アップロード後、ファイル名と件数が表示される', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV, 'shops.csv')
+    await waitFor(() => {
+      expect(screen.getByText(/shops\.csv（3件）/)).toBeTruthy()
+    })
+  })
+
+  it('多列CSV（2列以上）では照合キーのチェックボックス一覧が表示される', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByText('照合に使う列を選択してください（複数可）')).toBeTruthy()
+    })
+    // ヘッダーの列名がチェックボックスラベルとして表示される
+    expect(screen.getByText('name')).toBeTruthy()
+    expect(screen.getByText('phone')).toBeTruthy()
+    expect(screen.getByText('addr')).toBeTruthy()
+  })
+
+  it('1列CSVではチェックボックス一覧が表示されない', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(SINGLE_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByText(/test\.csv/)).toBeTruthy()
+    })
+    expect(screen.queryByText('照合に使う列を選択してください（複数可）')).toBeNull()
+  })
+})
+
+describe('ResultsPanel: 「照合する」ボタン', () => {
+  const MULTI_COL_CSV = 'name,phone,addr\n田中ラーメン,06-1111-1111,大阪市北区梅田1-1\n山本カフェ,06-2222-2222,大阪市西区南堀江2-2\n鈴木薬局,06-3333-3333,大阪市中央区鈴木3-3'
+  const SINGLE_COL_CSV = '田中ラーメン\n山本カフェ\n鈴木薬局'
+
+  const OSM_RESULTS = [
+    { type: 'node', id: 101, lat: 34.7, lon: 135.5, tags: { name: '田中ラーメン', amenity: 'restaurant' } },
+    { type: 'node', id: 202, lat: 34.71, lon: 135.51, tags: { name: '山本カフェ', shop: 'cafe' } },
+    { type: 'node', id: 303, lat: 34.72, lon: 135.52, tags: { name: '鈴木薬局', amenity: 'pharmacy' } },
+  ]
+
+  function uploadCsv(csvText, fileName = 'test.csv') {
+    const file = new File([csvText], fileName, { type: 'text/csv' })
+    const input = screen.getByLabelText(/CSVアップロード/)
+    fireEvent.change(input, { target: { files: [file] } })
+  }
+
+  it('アップロード後、「照合する」ボタンが表示される', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '照合する' })).toBeTruthy()
+    })
+  })
+
+  it('多列CSVで列未選択時はボタンがdisabled', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: '照合する' })
+      expect(btn.disabled).toBe(true)
+    })
+  })
+
+  it('列を選択するとボタンがenabledになる', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByText('照合に使う列を選択してください（複数可）')).toBeTruthy()
+    })
+    // name列をチェック
+    fireEvent.click(screen.getByLabelText('name'))
+    expect(screen.getByRole('button', { name: '照合する' }).disabled).toBe(false)
+  })
+
+  it('1列CSVではボタンが最初からenabled（自動選択）', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(SINGLE_COL_CSV)
+    await waitFor(() => {
+      const btn = screen.getByRole('button', { name: '照合する' })
+      expect(btn.disabled).toBe(false)
+    })
+  })
+
+  it('OSM結果が未取得だとボタンがdisabled', async () => {
+    render(<Harness />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '照合する' })).toBeTruthy()
+    })
+    // 列を選択しても結果がなければdisabled
+    fireEvent.click(screen.getByLabelText('name'))
+    expect(screen.getByRole('button', { name: '照合する' }).disabled).toBe(true)
+  })
+})
+
+describe('ResultsPanel: 照合実行・件数表示', () => {
+  const MULTI_COL_CSV = 'name,phone,addr\n田中ラーメン,06-1111-1111,大阪市北区梅田1-1\n山本カフェ,06-2222-2222,大阪市西区南堀江2-2\n存在しない店,06-4444-4444,テスト町4-4'
+
+  const OSM_RESULTS = [
+    { type: 'node', id: 101, lat: 34.7, lon: 135.5, tags: { name: '田中ラーメン', amenity: 'restaurant' } },
+    { type: 'node', id: 202, lat: 34.71, lon: 135.51, tags: { name: '山本カフェ', shop: 'cafe' } },
+  ]
+
+  function uploadCsv(csvText, fileName = 'test.csv') {
+    const file = new File([csvText], fileName, { type: 'text/csv' })
+    const input = screen.getByLabelText(/CSVアップロード/)
+    fireEvent.change(input, { target: { files: [file] } })
+  }
+
+  it('照合すると件数（照合/未照合）が表示される', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByText('照合に使う列を選択してください（複数可）')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByLabelText('name'))
+    fireEvent.click(screen.getByRole('button', { name: '照合する' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/照合 2件/)).toBeTruthy()
+    })
+    expect(screen.getByText(/未照合 1件/)).toBeTruthy()
+  })
+
+  it('全件照合できた場合は未照合0件', async () => {
+    const allMatchCsv = 'name,phone\n田中ラーメン,06-1111-1111\n山本カフェ,06-2222-2222'
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(allMatchCsv)
+    await waitFor(() => {
+      expect(screen.getByText('照合に使う列を選択してください（複数可）')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByLabelText('name'))
+    fireEvent.click(screen.getByRole('button', { name: '照合する' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/照合 2件/)).toBeTruthy()
+    })
+    expect(screen.getByText(/未照合 0件/)).toBeTruthy()
+  })
+})
+
+describe('ResultsPanel: CSVクリア', () => {
+  const MULTI_COL_CSV = 'name,phone,addr\n田中ラーメン,06-1111-1111,大阪市北区梅田1-1\n山本カフェ,06-2222-2222,大阪市西区南堀江2-2'
+
+  const OSM_RESULTS = [
+    { type: 'node', id: 101, lat: 34.7, lon: 135.5, tags: { name: '田中ラーメン', amenity: 'restaurant' } },
+    { type: 'node', id: 202, lat: 34.71, lon: 135.51, tags: { name: '山本カフェ', shop: 'cafe' } },
+  ]
+
+  function uploadCsv(csvText) {
+    const file = new File([csvText], 'test.csv', { type: 'text/csv' })
+    const input = screen.getByLabelText(/CSVアップロード/)
+    fireEvent.change(input, { target: { files: [file] } })
+  }
+
+  it('✕でCSV状態（ファイル名・チェックボックス・照合結果）がリセットされる', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByText(/test\.csv/)).toBeTruthy()
+    })
+    // 列を選択して照合実行
+    fireEvent.click(screen.getByLabelText('name'))
+    fireEvent.click(screen.getByRole('button', { name: '照合する' }))
+    await waitFor(() => {
+      expect(screen.getByText(/照合 2件/)).toBeTruthy()
+    })
+
+    // クリア
+    fireEvent.click(screen.getByTitle('CSV入力をクリア'))
+
+    // ファイル名・チェックボックス・結果がすべて消える
+    expect(screen.queryByText(/test\.csv/)).toBeNull()
+    expect(screen.queryByText('照合に使う列を選択してください（複数可）')).toBeNull()
+    expect(screen.queryByText(/照合 2件/)).toBeNull()
+    // 「照合する」ボタンも消える（csvMetaがnull）
+    expect(screen.queryByRole('button', { name: '照合する' })).toBeNull()
+  })
+})
+
+describe('ResultsPanel: CSVをダウンロード', () => {
+  const MULTI_COL_CSV = 'name,phone,addr\n田中ラーメン,06-1111-1111,大阪市北区梅田1-1\n山本カフェ,06-2222-2222,大阪市西区南堀江2-2\n存在しない店,06-4444-4444,テスト町4-4'
+
+  const OSM_RESULTS = [
+    { type: 'node', id: 101, lat: 34.7, lon: 135.5, tags: { name: '田中ラーメン', amenity: 'restaurant' } },
+    { type: 'node', id: 202, lat: 34.71, lon: 135.51, tags: { name: '山本カフェ', shop: 'cafe' } },
+  ]
+
+  function uploadCsv(csvText, fileName = 'test.csv') {
+    const file = new File([csvText], fileName, { type: 'text/csv' })
+    const input = screen.getByLabelText(/CSVアップロード/)
+    fireEvent.change(input, { target: { files: [file] } })
+  }
+
+  // アップロード → name列選択 → 照合実行 → ダウンロードボタン表示待ち
+  async function runMatch(csvText, fileName = 'test.csv') {
+    uploadCsv(csvText, fileName)
+    await waitFor(() => {
+      expect(screen.getByText('照合に使う列を選択してください（複数可）')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByLabelText('name'))
+    fireEvent.click(screen.getByRole('button', { name: '照合する' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /CSVをダウンロード/ })).toBeTruthy()
+    })
+  }
+
+  it('照合を実行するまでは表示されない', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    uploadCsv(MULTI_COL_CSV)
+    await waitFor(() => {
+      expect(screen.getByText('照合に使う列を選択してください（複数可）')).toBeTruthy()
+    })
+    // 列を選択済みでも、照合実行前はボタンが出ない
+    fireEvent.click(screen.getByLabelText('name'))
+    expect(screen.queryByRole('button', { name: /CSVをダウンロード/ })).toBeNull()
+  })
+
+  it('照合を実行すると表示される', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    await runMatch(MULTI_COL_CSV)
+    expect(screen.getByRole('button', { name: /CSVをダウンロード/ })).toBeTruthy()
+  })
+
+  it('元の列・順序を維持し osmid 列を追加したCSVをダウンロードする', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    await runMatch(MULTI_COL_CSV, 'shops.csv')
+    fireEvent.click(screen.getByRole('button', { name: /CSVをダウンロード/ }))
+
+    expect(downloadFile).toHaveBeenCalledTimes(1)
+    const [csv, filename, mime] = downloadFile.mock.calls[0]
+    expect(filename).toBe('shops_osmid.csv')
+    expect(mime).toBe('text/csv;charset=utf-8')
+
+    const lines = csv.replace(/^\uFEFF/, '').trimEnd().split('\n')
+    // ヘッダー: 元の列順の後に osmid が追加
+    expect(lines[0]).toBe('name,phone,addr,osmid')
+    // 行は入力順のまま、照合できた行は type/id、未照合は空欄
+    expect(lines[1]).toBe('田中ラーメン,06-1111-1111,大阪市北区梅田1-1,node/101')
+    expect(lines[2]).toBe('山本カフェ,06-2222-2222,大阪市西区南堀江2-2,node/202')
+    expect(lines[3]).toBe('存在しない店,06-4444-4444,テスト町4-4,')
+  })
+
+  it('BOM付きで出力される（Excel対応）', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    await runMatch(MULTI_COL_CSV)
+    fireEvent.click(screen.getByRole('button', { name: /CSVをダウンロード/ }))
+
+    const [csv] = downloadFile.mock.calls[0]
+    expect(csv.charCodeAt(0)).toBe(0xFEFF)
+  })
+
+  it('カンマを含む値はクォートで囲まれる', async () => {
+    // 2列以上でないとヘッダー行が認識されない（parseCsvToObjectsの判定）ためphone列を付与
+    const csv = 'name,phone\n"田中,ラーメン",06-1111-1111'
+    const results = [{ type: 'node', id: 901, lat: 34.7, lon: 135.5, tags: { name: '田中,ラーメン', amenity: 'restaurant' } }]
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: results }] } />)
+    await runMatch(csv)
+    fireEvent.click(screen.getByRole('button', { name: /CSVをダウンロード/ }))
+
+    const [out] = downloadFile.mock.calls[0]
+    const lines = out.replace(/^\uFEFF/, '').trimEnd().split('\n')
+    expect(lines).toEqual(['name,phone,osmid', '"田中,ラーメン",06-1111-1111,node/901'])
+  })
+
+  it('数式注入（= で始まる値）は \' を前置きする', async () => {
+    const csv = 'name,phone\n=SUM(A1),06-1111-1111'
+    const results = [{ type: 'node', id: 902, lat: 34.7, lon: 135.5, tags: { name: '=SUM(A1)' } }]
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: results }] } />)
+    await runMatch(csv)
+    fireEvent.click(screen.getByRole('button', { name: /CSVをダウンロード/ }))
+
+    const [out] = downloadFile.mock.calls[0]
+    const lines = out.replace(/^\uFEFF/, '').trimEnd().split('\n')
+    // 値自体にカンマ・クォートがない場合は export.js の csvEscape と同じく
+    // クォートで囲わず、数式注入対策の ' を前置きするだけ
+    expect(lines).toEqual(['name,phone,osmid', "'=SUM(A1),06-1111-1111,node/902"])
+  })
+
+  it('1列CSV（ヘッダーなし）でも末尾に osmid 列が追加される', async () => {
+    const csv = '田中ラーメン\n存在しない店'
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    // 1列CSVではキー列が自動選択されるので、照合ボタンのみクリック
+    uploadCsv(csv)
+    await waitFor(() => {
+      expect(screen.getByText(/test\.csv/)).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '照合する' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /CSVをダウンロード/ })).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /CSVをダウンロード/ }))
+
+    const [out] = downloadFile.mock.calls[0]
+    const lines = out.replace(/^\uFEFF/, '').trimEnd().split('\n')
+    expect(lines[0]).toBe('col_1,osmid')
+    expect(lines[1]).toBe('田中ラーメン,node/101')
+    expect(lines[2]).toBe('存在しない店,')
+  })
+
+  it('.txt 拡張子のファイルも _osmid.csv として出力される', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    await runMatch(MULTI_COL_CSV, 'list.txt')
+    fireEvent.click(screen.getByRole('button', { name: /CSVをダウンロード/ }))
+
+    expect(downloadFile.mock.calls[0][1]).toBe('list_osmid.csv')
+  })
+
+  it('CSVクリアするとダウンロードボタンも消える', async () => {
+    render(<Harness preActions={[{ type: 'SET_RESULTS', payload: OSM_RESULTS }] } />)
+    await runMatch(MULTI_COL_CSV)
+    expect(screen.getByRole('button', { name: /CSVをダウンロード/ })).toBeTruthy()
+
+    fireEvent.click(screen.getByTitle('CSV入力をクリア'))
+    expect(screen.queryByRole('button', { name: /CSVをダウンロード/ })).toBeNull()
   })
 })
