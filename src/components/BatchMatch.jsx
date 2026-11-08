@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { useBatchMatch } from '../context/BatchMatchContext.jsx'
-import { parseNameList, batchMatch, matchResultsToCSV } from '../utils/batchMatch'
-import { matchResultsToLocationCSV } from '../utils/locationCsv'
+import { parseNameList, batchMatch, batchMatchCsvRows, matchResultsToCSV } from '../utils/batchMatch'
+import { parseCsvToObjects, extractNamesWithRows } from '../utils/csvParse'
+import { matchResultsToLocationCSV, originalCsvWithMatchToCSV } from '../utils/locationCsv'
 import { downloadFile } from '../utils/export'
 import { parsePreviousYearCSV, verifyPreviousIds, verificationToCSV, getStatusLabel } from '../utils/verifyIds'
 import BatchMatchMap from './BatchMatchMap'
@@ -19,7 +20,16 @@ function BatchMatch() {
   const [showMap, setShowMap] = useState(true)
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'unconfirmed' | 'confirmed' | 'none'
 
-  const { inputText, matchResults, selections, activeIndex, previewCandidate, processing } = bmState
+  const { inputText, matchResults, matchRowAligned, selections, activeIndex, previewCandidate, processing, csvData, csvKeyCols } = bmState
+
+  // CSV導出リスト（キー列から導出された店名）とtextarea内容（パース後）が一致するか
+  const derivedNames = useMemo(() => csvData
+    ? extractNamesWithRows(csvData.rows, csvKeyCols).map(d => d.name)
+    : [], [csvData, csvKeyCols])
+  const inputNames = useMemo(() => parseNameList(inputText), [inputText])
+  const inputMatchesCsv = !!csvData && derivedNames.length > 0 &&
+    inputNames.length === derivedNames.length &&
+    inputNames.every((n, i) => n === derivedNames[i])
   const { results: osmResults } = appState
 
   // (#26) 前年度CSV検証
@@ -28,6 +38,10 @@ function BatchMatch() {
   const [showVerification, setShowVerification] = useState(false)
 
   // 照合実行
+  // CSV取込中且つtextareaがCSV導出リストと一致する場合: matchCsvRowsOsmid の
+  // 考え方（行ごとにキー列を優先順に試し matchName を呼ぶ）に倣い、
+  // batchMatchCsvRows で元のCSVの行順に揃えた結果を作る（行対応を保証）。
+  // それ以外（貼り付け・textarea編集済み）は従来の batchMatch（名前リスト順）を使う。
   const handleMatch = useCallback(() => {
     if (!osmResults || osmResults.length === 0) {
       alert('先に「施設検索」タブでBBOXを指定してOSMデータを検索してください。')
@@ -38,11 +52,17 @@ function BatchMatch() {
 
     bmDispatch({ type: 'SET_PROCESSING', payload: true })
     setTimeout(() => {
-      const res = batchMatch(names, osmResults)
-      bmDispatch({ type: 'SET_MATCH_RESULTS', payload: res })
+      if (inputMatchesCsv) {
+        // 行順に揃えた結果（results[i] ↔ CSVのi行目）
+        const res = batchMatchCsvRows(csvData.rows, csvKeyCols, osmResults)
+        bmDispatch({ type: 'SET_MATCH_RESULTS', payload: res, rowAligned: true })
+      } else {
+        const res = batchMatch(names, osmResults)
+        bmDispatch({ type: 'SET_MATCH_RESULTS', payload: res, rowAligned: false })
+      }
       bmDispatch({ type: 'SET_PROCESSING', payload: false })
     }, 50)
-  }, [inputText, osmResults, bmDispatch])
+  }, [inputText, inputMatchesCsv, csvData, csvKeyCols, osmResults, bmDispatch])
 
   // 施設選択
   const handleSelectFacility = useCallback((index) => {
@@ -76,21 +96,56 @@ function BatchMatch() {
   }, [matchResults])
 
   // 地図制作用CSV: 確定した候補だけ座標・OSM IDを出力 (#42)
+  // 取込CSVがある場合: 元のCSVの全列・全行・列順・行順をそのまま保ち、
+  // 確定した施設にlat/lon/osmid(type/id)を付加して出力する。
+  // 照合が行揃えモード（batchMatchCsvRows）で実行され、textareaがCSV導出
+  // リストと一致している場合のみ元のCSVに書き込む。貼り付けなどで一致しない
+  // 場合は、行の対応が保証できないため従来の固定列形式にフォールバックする。
   const handleDownloadLocations = useCallback(() => {
     if (!matchResults) return
-    const csv = matchResultsToLocationCSV(matchResults)
+    let csv
+    csv = (csvData && matchRowAligned && inputMatchesCsv)
+      ? originalCsvWithMatchToCSV(csvData, matchResults)
+      : matchResultsToLocationCSV(matchResults)
     const dateStr = new Date().toISOString().slice(0, 10)
     downloadFile(csv, `map-locations-${dateStr}.csv`, 'text/csv;charset=utf-8')
-  }, [matchResults])
+  }, [matchResults, csvData, matchRowAligned, inputMatchesCsv])
 
-  // ファイル読込
-  const handleFileUpload = useCallback((e) => {
+  // CSV取込（RFC4180準拠でパースし、構造化データをcontextに保持）
+  // キー列の値から店名リストを導出してinputTextに反映するため、
+  // 従来どおり「照合」ボタンでbatchMatchが使える
+  const handleCsvUpload = useCallback((e) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => bmDispatch({ type: 'SET_INPUT_TEXT', payload: ev.target.result })
+    reader.onload = (ev) => {
+      const { headers, rows } = parseCsvToObjects(ev.target.result)
+      if (rows.length === 0) {
+        alert('ファイルからデータを読み込めませんでした。')
+        return
+      }
+      const keyCols = headers.length === 1 ? [headers[0]] : []
+      bmDispatch({ type: 'SET_CSV_DATA', payload: { fileName: file.name, headers, rows } })
+      bmDispatch({ type: 'SET_INPUT_TEXT', payload: extractNamesWithRows(rows, keyCols).map(d => d.name).join('\n') })
+    }
     reader.readAsText(file, 'utf-8')
     e.target.value = ''
+  }, [bmDispatch])
+
+  // 照合キー列の選択（複数可）。選択に応じて店名リストを再導出する
+  const toggleCsvCol = useCallback((col) => {
+    if (!csvData) return
+    const next = csvKeyCols.includes(col)
+      ? csvKeyCols.filter((c) => c !== col)
+      : [...csvKeyCols, col]
+    bmDispatch({ type: 'SET_CSV_KEY_COLS', payload: next })
+    bmDispatch({ type: 'SET_INPUT_TEXT', payload: extractNamesWithRows(csvData.rows, next).map(d => d.name).join('\n') })
+  }, [csvData, csvKeyCols, bmDispatch])
+
+  // CSV入力をクリア（関連する照合結果も破棄される）
+  const handleClearCsv = useCallback(() => {
+    bmDispatch({ type: 'CLEAR_CSV' })
+    bmDispatch({ type: 'SET_INPUT_TEXT', payload: '' })
   }, [bmDispatch])
 
   // (#26) 前年度CSVファイル読み込み
@@ -127,24 +182,27 @@ function BatchMatch() {
   }, [verificationResults])
 
   // サマリー計算
+  // 'empty'（キー列が全空で店名が導出されないCSV行）は照合対象外なので集計しない
   const summary = useMemo(() => {
     if (!matchResults) return null
+    const rows = matchResults.filter(r => r.matchType !== 'empty')
     return {
-      total: matchResults.length,
-      confirmed: matchResults.filter(r => r.confirmed).length,
-      unconfirmed: matchResults.filter(r => !r.confirmed && r.matchType !== 'none').length,
-      none: matchResults.filter(r => r.matchType === 'none').length,
+      total: rows.length,
+      confirmed: rows.filter(r => r.confirmed).length,
+      unconfirmed: rows.filter(r => !r.confirmed && r.matchType !== 'none').length,
+      none: rows.filter(r => r.matchType === 'none').length,
     }
   }, [matchResults])
 
-  // 絞り込み
+  // 絞り込み（'empty'行は表示しない）
   const filteredResults = useMemo(() => {
     if (!matchResults) return []
+    const rows = matchResults.filter(r => r.matchType !== 'empty')
     switch (statusFilter) {
-      case 'confirmed': return matchResults.filter(r => r.confirmed)
-      case 'unconfirmed': return matchResults.filter(r => !r.confirmed && r.matchType !== 'none')
-      case 'none': return matchResults.filter(r => r.matchType === 'none')
-      default: return matchResults
+      case 'confirmed': return rows.filter(r => r.confirmed)
+      case 'unconfirmed': return rows.filter(r => !r.confirmed && r.matchType !== 'none')
+      case 'none': return rows.filter(r => r.matchType === 'none')
+      default: return rows
     }
   }, [matchResults, statusFilter])
 
@@ -156,7 +214,7 @@ function BatchMatch() {
       {/* 上部バー: 入力 + 操作 + サマリー */}
       <div className="px-3 py-2 border-b border-slate-200 bg-white space-y-2 shrink-0">
         <p className="text-[11px] text-slate-600">
-          ①「施設検索」で対象地域を検索 → ②店名リストを貼り付け／CSV取込 → ③照合 → ④候補を地図で確認し「確定」 → ⑤地図用CSVを保存
+          ①「施設検索」タブで対象地域をOSM検索 → ②店名リストを貼り付け／CSV取込 → ③照合 → ④候補を地図で確認し「確定」 → ⑤地図用CSVを保存
         </p>
         {/* 入力行 */}
         <div className="flex items-start gap-2">
@@ -170,7 +228,7 @@ function BatchMatch() {
           <div className="flex flex-col gap-1 shrink-0">
             <label className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded font-medium cursor-pointer transition-colors">
               📁 CSV
-              <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
+              <input type="file" accept=".csv,.txt" onChange={handleCsvUpload} className="hidden" />
             </label>
             <button
               onClick={handleMatch}
@@ -181,6 +239,49 @@ function BatchMatch() {
             </button>
           </div>
         </div>
+
+        {/* CSV取込の状態 + 照合キー列の選択（CSV取込中は表示） */}
+        {csvData && (
+          <div className="p-2 bg-slate-50 rounded-md border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-500 truncate max-w-[240px]">
+                {csvData.fileName}（{csvData.rows.length}件）
+              </span>
+              <button
+                onClick={handleClearCsv}
+                className="text-[10px] text-slate-400 hover:text-red-500"
+                title="CSV入力をクリア"
+                aria-label="CSV入力をクリア"
+              >
+                ✕
+              </button>
+              {csvData.headers.length > 1 && (
+                <span className="ml-auto text-[10px] text-slate-400">
+                  {csvKeyCols.length > 0 ? `キー列 ${csvKeyCols.length} 件選択中` : '照合キー列を選択してください'}
+                </span>
+              )}
+            </div>
+            {csvData.headers.length > 1 && (
+              <div className="mt-1.5">
+                <p className="text-[10px] text-slate-500 mb-1">
+                  照合に使う列を選択してください（複数可）
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {csvData.headers.map((col, i) => (
+                    <label key={i} className="flex items-center gap-1 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={csvKeyCols.includes(col)}
+                        onChange={() => toggleCsvCol(col)}
+                      />
+                      {col}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* サマリー + 絞り込み + 出力 */}
         {summary && (
@@ -228,10 +329,10 @@ function BatchMatch() {
         )}
       </div>
 
-      {/* 地図用CSVでは、未確認行の座標・OSM IDは出力しない */}
+      {/* 地図用CSV: 確定行のみ座標・osmidを書き込む（未確認・候補なしは空欄、既存列は空欄で上書き） */}
       {summary && (
         <p className="px-3 py-1 text-[10px] text-slate-500 bg-white border-b border-slate-100 shrink-0">
-          地図用CSVは確定済みの候補だけに座標を付与。未確認・候補なしは空欄で残します（way/relationは代表座標）。
+          地図用CSVは確定済みの候補だけに座標・osmidを書き込みます。未確認・候補なしの行は空欄のままです（元のCSVにlat/lon/osmid列が既にある場合はその列へ書き込み）。way/relationは代表座標。
         </p>
       )}
 
@@ -273,7 +374,7 @@ function BatchMatch() {
             </div>
           )}
           {!osmResults || osmResults.length === 0 ? (
-            <p className="text-[10px] text-amber-600 mt-1">先に「施設検索」でBBOX内のOSMデータを取得してください。</p>
+            <p className="text-[10px] text-amber-600 mt-1">先に「施設検索」タブでBBOX内のOSMデータを取得してください。</p>
           ) : null}
         </div>
       )}

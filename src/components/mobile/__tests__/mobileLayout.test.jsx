@@ -203,9 +203,30 @@ describe('(#59) レイアウト切替（ビューポート幅ベース）', () =
     mediaMatches = false
     renderApp()
 
-    // PCのタブバー・地図切替ボタンが存在
-    expect(screen.getByText('施設検索')).toBeTruthy()
+    // 廃止された上部タブバーは存在しない（nav要素がPCレイアウトに無い）
+    expect(screen.queryByRole('navigation')).toBeNull()
+
+    // タイトル行右端: ハンバーガーメニューボタン（旧タブバーの代替）
+    const menuBtn = screen.getByRole('button', { name: 'メニュー' })
+    expect(menuBtn).toBeTruthy()
+    // デフォルト画面は施設検索で、画面の中身は既存構成のまま（地図切替ボタン等）
     expect(screen.getByText('地図を隠す')).toBeTruthy()
+
+    // メニューからの画面切替（新仕様: PCでもタイトル行右端のハンバーガーメニューで切替）
+    fireEvent.click(menuBtn)
+    // メニューを開くと、3つの画面項目+フッター項目が揃って表示される
+    const menu = await screen.findByRole('menu', { name: 'メニュー' })
+    for (const label of ['施設検索', '店名→座標CSV', '集計・出力', 'まちデータ帳とは']) {
+      expect(within(menu).getByRole('menuitem', { name: label })).toBeTruthy()
+    }
+    // 「店名→座標CSV」を選択して切替
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '店名→座標CSV' }))
+    // 店名→座標CSV画面（BatchMatch）に切り替わり、メニューは閉じる
+    await screen.findByRole('button', { name: '照合' })
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).toBeNull()
+    })
+
     // モバイル下部ナビは存在しない
     expect(screen.queryByRole('navigation', { name: 'モバイルナビゲーション' })).toBeNull()
   }, IT_TIMEOUT)
@@ -213,20 +234,28 @@ describe('(#59) レイアウト切替（ビューポート幅ベース）', () =
   it('matchMedia change でレイアウトが追従する（回転・キーボード表示に対応）', async () => {
     mediaMatches = false
     renderApp()
-    expect(screen.getByText('施設検索')).toBeTruthy()
+    // PCレイアウト: タイトル行右端のハンバーガーメニューボタン + 施設検索画面（地図切替）
+    expect(screen.getByRole('button', { name: 'メニュー' })).toBeTruthy()
+    expect(screen.getByText('地図を隠す')).toBeTruthy()
 
-    // 横画面へ回転（幅が1024px未満になる）
+    // 横画面へ回転（幅が1024px未満になる）→ モバイルシェル
     fireMediaChange(true)
+    // 下部ナビが出現し、モバイルの検索タブ（「この表示範囲で検索」）が表示される
     await waitFor(() => {
       expect(screen.getByRole('navigation', { name: 'モバイルナビゲーション' })).toBeTruthy()
     }, { timeout: 3000 })
-    expect(screen.queryByText('施設検索')).toBeNull()
+    expect(screen.getByRole('button', { name: 'この表示範囲で検索' })).toBeTruthy()
+    // PC固有の要素（メニューボタン・地図切替）は消える
+    expect(screen.queryByRole('button', { name: 'メニュー' })).toBeNull()
+    expect(screen.queryByText('地図を隠す')).toBeNull()
 
-    // 元に戻る
+    // 元に戻る → PCレイアウト
     fireMediaChange(false)
     await waitFor(() => {
-      expect(screen.getByText('施設検索')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'メニュー' })).toBeTruthy()
     }, { timeout: 3000 })
+    // 施設検索画面が復帰し、モバイル下部ナビは消える
+    expect(screen.getByText('地図を隠す')).toBeTruthy()
     expect(screen.queryByRole('navigation', { name: 'モバイルナビゲーション' })).toBeNull()
   }, IT_TIMEOUT)
 })

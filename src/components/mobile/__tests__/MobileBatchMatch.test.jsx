@@ -14,11 +14,13 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { AppContext } from '../../../context/AppContext'
 import { appReducer, createInitialState } from '../../../state/appReducer'
 import { BatchMatchProvider } from '../../../context/BatchMatchContext.jsx'
+import { downloadFile } from '../../../utils/export'
 import MobileBatchMatch from '../MobileBatchMatch'
 
 vi.mock('../../BatchMatchMap', () => ({
   default: () => <div data-testid="mini-map" />
 }))
+vi.mock('../../../utils/export', () => ({ downloadFile: vi.fn() }))
 
 const OSM_RESULTS = [
   { type: 'node', id: 101, lat: 34.7, lon: 135.5, tags: { name: '田中ラーメン', amenity: 'restaurant' } },
@@ -59,8 +61,42 @@ function renderWithResults(ui, preActions) {
   )
 }
 
+describe('MobileBatchMatch: 地図用CSVダウンロード', () => {
+  it('元のCSVが無い場合（貼り付けフロー）は、既存の9列形式のまま変えない', async () => {
+    renderWithResults(<MobileBatchMatch />, [{ type: 'SET_RESULTS', payload: OSM_RESULTS }])
+
+    // CSV取込らずに名前リストを直接貼り付ける
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '田中ラーメン\n山本カフェ\n鈴木薬局' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: '照合実行' }))
+    await waitFor(() => {
+      expect(screen.getByText('3件中:')).toBeTruthy()
+    })
+
+    // 「田中ラーメン」の候補を確定（行ラベルはbutton）
+    fireEvent.click(screen.getByRole('button', { name: /田中ラーメン/ }))
+    fireEvent.click(screen.getAllByRole('button', { name: '確定' })[0])
+
+    // 地図用CSVをダウンロード
+    fireEvent.click(screen.getByRole('button', { name: /地図用CSV/ }))
+    expect(downloadFile).toHaveBeenCalledTimes(1)
+    const [csv, filename] = downloadFile.mock.calls[0]
+    const l = csv.replace(/^\uFEFF/, '').trimEnd().split('\n')
+    // 従来の固定9列形式
+    expect(l).toEqual([
+      'name,lat,lon,status,matched_name,osm_type,osm_id,osm_url,source',
+      '田中ラーメン,34.700000,135.500000,確認済み,,node,node/101,https://www.openstreetmap.org/node/101,© OpenStreetMap contributors (ODbL)',
+      '山本カフェ,,,要確認,,,,,' ,
+      '鈴木薬局,,,要確認,,,,,'
+    ])
+    expect(filename).toMatch(/^map-locations-\d{4}-\d{2}-\d{2}\.csv$/)
+  })
+})
+
 beforeEach(() => {
   cleanup()
+  downloadFile.mockClear()
   vi.spyOn(window, 'alert').mockImplementation(() => {})
 })
 

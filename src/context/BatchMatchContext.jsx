@@ -8,7 +8,10 @@ import { parseNameList, batchMatch } from '../utils/batchMatch'
 
 const initialState = {
   inputText: '',
-  matchResults: null,   // batchMatch()の戻り値
+  csvData: null,       // 取込CSVの構造化データ { fileName, headers, rows } | null
+  csvKeyCols: [],      // 照合キーとして選択中の列名配列
+  matchResults: null,   // batchMatch()/batchMatchCsvRows()の戻り値
+  matchRowAligned: false, // true: matchResultsが取込CSVの行順に揃ったもの（batchMatchCsvRows）
   selections: {},       // { index: candidateIdx }
   activeIndex: null,    // 現在選択中の対象施設index
   previewCandidate: null, // { index, candidateIdx } — 地図プレビュー対象
@@ -19,8 +22,45 @@ function batchMatchReducer(state, action) {
   switch (action.type) {
     case 'SET_INPUT_TEXT':
       return { ...state, inputText: action.payload }
+    case 'SET_CSV_DATA': {
+      const { fileName, headers, rows } = action.payload
+      // 取込CSVが新しい入力になるため、それ以前の照合結果は stale として破棄
+      // 1列CSVは唯一の列を自動的にキー列として選択
+      return {
+        ...state,
+        csvData: { fileName, headers, rows },
+        csvKeyCols: headers.length === 1 ? [headers[0]] : [],
+        matchResults: null,
+        matchRowAligned: false,
+        selections: {},
+        activeIndex: null,
+        previewCandidate: null,
+      }
+    }
+    case 'SET_CSV_KEY_COLS':
+      // キー列が変わると導出される店名が変わるため、以前の照合結果は stale として破棄
+      return {
+        ...state,
+        csvKeyCols: action.payload,
+        matchResults: null,
+        matchRowAligned: false,
+        selections: {},
+        activeIndex: null,
+        previewCandidate: null,
+      }
+    case 'CLEAR_CSV':
+      return {
+        ...state,
+        csvData: null,
+        csvKeyCols: [],
+        matchResults: null,
+        matchRowAligned: false,
+        selections: {},
+        activeIndex: null,
+        previewCandidate: null,
+      }
     case 'SET_MATCH_RESULTS':
-      return { ...state, matchResults: action.payload, selections: {}, activeIndex: null }
+      return { ...state, matchResults: action.payload, matchRowAligned: !!action.rowAligned, selections: {}, activeIndex: null }
     case 'SET_PROCESSING':
       return { ...state, processing: action.payload }
     case 'SELECT_FACILITY':

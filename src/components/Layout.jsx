@@ -1,10 +1,10 @@
 import React from 'react'
 
-function Layout({ children }) {
+function Layout({ children, headerAction }) {
   return (
     <div className="site-layout h-screen flex flex-col bg-slate-50">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-4 py-2 shrink-0">
+      <header className="bg-white border-b border-slate-200 px-4 py-2 shrink-0 relative z-30">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -18,6 +18,8 @@ function Layout({ children }) {
               地図や自治体から、お店・施設の情報を探して保存
             </p>
           </div>
+          {/* ヘッダー右端のアクション（PC版: ハンバーガーメニュー） */}
+          {headerAction && <div className="ml-auto shrink-0">{headerAction}</div>}
         </div>
       </header>
 

@@ -5,7 +5,7 @@
  * - 候補なし行も同一列幅
  */
 import { describe, it, expect } from 'vitest'
-import { batchMatch, matchResultsToCSV, matchName, parseNameList } from '../batchMatch'
+import { batchMatch, batchMatchCsvRows, matchResultsToCSV, matchName, parseNameList } from '../batchMatch'
 
 // テスト用OSM結果
 const mockResults = [
@@ -75,6 +75,20 @@ describe('matchResultsToCSV（Issue #21）', () => {
     for (let i = 1; i < lines.length; i++) {
       expect(countFields(lines[i]), `行${i+1}の列数が一致しない: ${lines[i]}`).toBe(headerFields)
     }
+  })
+
+  it('matchType "empty"（キー列全空のCSV行）は候補なしとして出力し、列幅も同一', () => {
+    const empty = makeMatchResult(2, '', 'empty', false, null, [])
+    const confirmed = makeMatchResult(1, 'ラーメン屋 田中', 'exact', true,
+      { id: 101, type: 'node', name: 'ラーメン屋 田中', lat: 35.68, lon: 139.77, url: 'https://www.openstreetmap.org/node/101', matchType: 'exact', matchedTag: 'name', matchedValue: 'ラーメン屋 田中' },
+      [{ result: mockResults[0], match: { type: 'exact', tag: 'name', value: 'ラーメン屋 田中' } }]
+    )
+    const csv = matchResultsToCSV([confirmed, empty])
+    const lines = csv.replace('\uFEFF', '').split('\n').filter(l => l.trim())
+    expect(lines[1]).toBe('1,ラーメン屋 田中,確認済み,完全一致,node,node/101,https://www.openstreetmap.org/node/101,ラーメン屋 田中,1')
+    expect(lines[2]).toBe('2,,候補なし,,,,,,0')
+    const headerFields = countFields(lines[0])
+    expect(countFields(lines[2]), 'empty行もヘッダーと同一列幅').toBe(headerFields)
   })
 
   it('# メタデータ行を含まない', () => {
@@ -189,6 +203,64 @@ describe('parseNameList（Issue #25: RFC4180対応）', () => {
     const text = 'name\n"多行\n名称"'
     const result = parseNameList(text)
     expect(result).toEqual(['多行\n名称'])
+  })
+})
+
+describe('batchMatchCsvRows（CSV行ごとの照合）', () => {
+  it('各行はキー列の優先順で最初の空でない値を店名とし、行順に揃った結果を返す', () => {
+    const rows = [
+      { name: '田中ラーメン', addr: '大阪市' },
+      { name: '', addr: '神戸市' },       // nameが空 → addrの値にフォールバック
+      { name: '鈴木薬局', addr: '堺市' },
+    ]
+    const res = batchMatchCsvRows(rows, ['name', 'addr'], mockResults)
+    expect(res).toHaveLength(3)
+    expect(res[0].inputName).toBe('田中ラーメン')
+    expect(res[0].index).toBe(1)
+    expect(res[1].inputName).toBe('神戸市')
+    expect(res[1].index).toBe(2)
+    expect(res[2].inputName).toBe('鈴木薬局')
+    expect(res[2].index).toBe(3)
+  })
+
+  it('キー列がすべて空の行は matchType "empty"（結果配列から除外せず行対応を保つ）', () => {
+    const rows = [
+      { name: '田中ラーメン' },
+      { name: '' },
+    ]
+    const res = batchMatchCsvRows(rows, ['name'], mockResults)
+    expect(res).toHaveLength(2)
+    expect(res[0].matchType).toBe('exact')
+    expect(res[0].matched.id).toBe(102)
+    expect(res[1].matchType).toBe('empty')
+    expect(res[1].inputName).toBe('')
+    expect(res[1].candidates).toEqual([])
+    expect(res[1].matched).toBeNull()
+  })
+
+  it('照合内容は batchMatch（名前リスト順）と同一（matchName の再利用）', () => {
+    const rows = [
+      { name: '田中ラーメン' },
+      { name: 'カフェ山本' },
+      { name: '薬局鈴木' },
+    ]
+    const byRows = batchMatchCsvRows(rows, ['name'], mockResults)
+    const byList = batchMatch(rows.map(r => r.name), mockResults)
+    expect(byRows.map(r => [r.inputName, r.matchType, r.matched?.id]))
+      .toEqual(byList.map(r => [r.inputName, r.matchType, r.matched?.id]))
+  })
+
+  it('キー列が行に存在しない・空リストの場合はすべて empty', () => {
+    const rows = [{ name: '田中ラーメン' }]
+    expect(batchMatchCsvRows(rows, ['存在しない列'], mockResults)
+      .every(r => r.matchType === 'empty')).toBe(true)
+    expect(batchMatchCsvRows(rows, [], mockResults)
+      .every(r => r.matchType === 'empty')).toBe(true)
+  })
+
+  it('rowsがnull・空配列でもエラーにならない（空配列を返す）', () => {
+    expect(batchMatchCsvRows(null, ['name'], mockResults)).toEqual([])
+    expect(batchMatchCsvRows([], ['name'], mockResults)).toEqual([])
   })
 })
 

@@ -180,6 +180,42 @@ export function batchMatch(names, results) {
 }
 
 /**
+ * CSV行をOSM検索結果と、行ごとに照合する（batchMatch の行版）
+ *
+ * csvOsmidMatch.js の matchCsvRowsOsmid と同じ考え方を再利用する:
+ * 各行についてキー列を指定順に試し、最初の空でない値を店名として
+ * matchName を呼び、結果を行に直接対応させる。
+ *
+ * キー列がすべて空の行は店名が空となり matchType 'empty' になるが、
+ * 行ごとに対応関係を保つため結果配列からは除外しない。
+ * 戻り値は行順に揃った照合結果（results[i] が rows[i] に対応）。
+ *
+ * @param {Array<Object>} rows - CSV行データ（列名をキーにしたオブジェクトの配列）
+ * @param {string[]} keyColumns - 照合キーに使う列名の配列（試す優先順）
+ * @param {Array} results - OSM検索結果
+ * @returns {Array} 行順に揃った照合結果（index は元のCSV行番号）
+ */
+export function batchMatchCsvRows(rows, keyColumns, results) {
+  const rowArr = Array.isArray(rows) ? rows : []
+  const keyArr = Array.isArray(keyColumns) ? keyColumns : []
+  const resultArr = Array.isArray(results) ? results : []
+
+  return rowArr.map((row, index) => {
+    // matchCsvRowsOsmid と同じく、キー列を指定順に試して最初の空でない値を採用
+    let name = ''
+    for (const col of keyArr) {
+      name = String(row?.[col] ?? '').trim()
+      if (name) break
+    }
+    return {
+      index: index + 1,
+      inputName: name,
+      ...matchName(name, resultArr)
+    }
+  })
+}
+
+/**
  * 照合結果をCSVで出力（Issue #21対応）
  * - # メタデータ行を一切含めない（CSVパーサー互換性）
  * - ヘッダーが最初の行（標準CSVリーダー対応）
@@ -192,7 +228,8 @@ export function matchResultsToCSV(matchResults) {
   const lines = [headers.map(csvEscape).join(',')]
 
   for (const r of matchResults) {
-    if (r.matchType === 'none') {
+    // 'empty'（キー列が全空のCSV行）も候補なしとして扱う
+    if (r.matchType === 'none' || r.matchType === 'empty') {
       const row = [String(r.index), r.inputName, '候補なし', '', '', '', '', '', '0']
       lines.push(row.map(csvEscape).join(','))
     } else {
