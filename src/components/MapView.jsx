@@ -216,7 +216,7 @@ function resultsToGeoJSON(results) {
  * - (#38) ポップアップはtextContentベースのDOMノードのみ（setHTML禁止）
  * - (#60) コンテナサイズ変化でmap.resize()（hidden→表示復帰時のタイル再描画）
  */
-function MapView({ onMarkerClick = null }) {
+function MapView({ onMarkerClick = null, onMarkerTap = null }) {
   const containerRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const loadedRef = useRef(false)
@@ -233,6 +233,8 @@ function MapView({ onMarkerClick = null }) {
   useEffect(() => { stateRef.current = state })
   const onMarkerClickRef = useRef(onMarkerClick)
   useEffect(() => { onMarkerClickRef.current = onMarkerClick })
+  const onMarkerTapRef = useRef(onMarkerTap)
+  useEffect(() => { onMarkerTapRef.current = onMarkerTap })
 
   // results/activeResultId の最新値（loadイベント内で使用する）
   const resultsRef = useRef(results)
@@ -307,6 +309,11 @@ function MapView({ onMarkerClick = null }) {
     const result = stateRef.current.results.find((r) => `${r.type}/${r.id}` === key)
     if (!result) return
 
+    // POI説明枠への通知（ポップアップと並行して呼び出す）
+    if (onMarkerTapRef.current) {
+      onMarkerTapRef.current(result)
+    }
+
     const closePopup = () => {
       if (popupRef.current) {
         popupRef.current.remove()
@@ -318,6 +325,13 @@ function MapView({ onMarkerClick = null }) {
     if (onMarkerClickRef.current) {
       closePopup()
       onMarkerClickRef.current(result)
+      return
+    }
+
+    // PC: onMarkerTap が設定されている場合はポップアップを廃止し、
+    // 説明枠に一本化する（PC版 SearchTabContent で onMarkerTap を渡す）。
+    if (onMarkerTapRef.current) {
+      closePopup()
       return
     }
 

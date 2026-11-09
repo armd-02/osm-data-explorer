@@ -17,7 +17,9 @@ import { useSearch } from './hooks/useSearch'
 import { buildSearchCriteria } from './utils/searchCriteria'
 import SearchActionButton from './components/SearchActionButton'
 import BarrierFreeLegend from './components/BarrierFreeLegend'
+import PoiDescription from './components/PoiDescription'
 import { useIsMobile } from './hooks/useIsMobile'
+import { useDraggableHeight, MAP_HEIGHT_STORAGE_KEY_PC } from './hooks/useDraggableHeight'
 import MobileShell from './components/mobile/MobileShell'
 import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
 import { appReducer, createInitialState } from './state/appReducer'
@@ -135,11 +137,28 @@ function App() {
  * - 検索条件: 折りたたみ式（ヘッダー行 ⇄ フォーム表示）、展開時は自然の高さ。幅いっぱいの行
  * - 結果一覧+地図: 幅1280px以上（xl）で2列グリッド（並列）、未満では1列で縦積み
  * - 結果一覧: 高さ上限640px・内部スクロール（ResultsPanel内で設定。ページが際限なく長くなるのを防ぐ）
- * - 地図: 高さ520px固定のブロック（flexで残り高さを埋める方式は廃止。隠す/表示する切替あり）
+ * - 地図: 既定高さ520pxのブロック（flexで残り高さを埋める方式は廃止。隠す/表示する切替あり）。
+ *   地図下のハンドルをドラッグで高さを任意に変更可（既定の h-[520px] クラスは維持し、
+ *   ドラッグ後の高さのみインラインstyleで上書き → 凡例配置テスト等の前提を壊さない）
  */
 export function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setShowMap }) {
   const { state } = useApp()
   const { search, cancel } = useSearch()
+  // 地図の高さをドラッグで変更（既定520px）。
+  // 高さ変更に合わせて map.resize() を呼ぶことで、MapLibre の描画が
+  // ドラッグに追随する（MapView側のResizeObserverは2重の安全策）
+  const handleMapResize = () => {
+    const map = getMapInstance()
+    if (map && typeof map.resize === 'function') map.resize()
+  }
+  const mapHeight = useDraggableHeight({ defaultHeight: 520, minHeight: 280, maxHeight: 1000, storageKey: MAP_HEIGHT_STORAGE_KEY_PC, onResize: handleMapResize })
+
+  // 地図上のマーカータップで選択されたPOI（説明枠の表示用）
+  const [tappedPoi, setTappedPoi] = useState(null)
+  // 新規検索結果が来たら選択をクリア（旧POIが存在しなくなるため）
+  useEffect(() => {
+    if (state.status === 'success') setTappedPoi(null)
+  }, [state.results, state.status])
 
   // (回帰) 地図ロード完了までgetMapInstance()はnull。
   // ページを開いた直後は初回レンダリング時点でnullのため、
@@ -243,13 +262,30 @@ export function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap,
                 地図を隠す
               </button>
             </div>
-            {/* 地図本体: 高さ520px固定（flexでの残り高さ埋めは使わない） */}
-            <div className="search-split relative h-[520px]">
-              <MapView />
+            {/* 地図本体: 既定高さ520px（flexでの残り高さ埋めは使わない）。
+                ドラッグ後はインラインstyleで高さを上書き */}
+            <div className="search-split relative h-[520px]" style={mapHeight.containerStyle}>
+              <MapView
+                onMarkerTap={(result) => {
+                  setTappedPoi(result)
+                  dispatch({ type: 'SET_ACTIVE_RESULT', payload: `${result.type}/${result.id}` })
+                }}
+              />
             </div>
-            {/* (#62) バリアフリー凡例: 地図本体の下（地図上のオーバーレイ廃止）。
-                表示条件は BarrierFreeLegend 自身が context で判定する。 */}
-            <BarrierFreeLegend />
+            {/* 高さドラッグハンドル: 地図下をドラッグで地図の高さを変更（PC・モバイル共通） */}
+            <div
+              {...mapHeight.handleProps}
+              className="h-3 shrink-0 bg-slate-100 border-t border-slate-200 flex items-center justify-center"
+            >
+              <span className="w-8 h-1 rounded-full bg-slate-300" />
+            </div>
+            {/* 凡例＋POI説明枠（横並び。狭い画面では折り返し） */}
+            <div className="flex flex-wrap gap-2 px-2 py-1.5">
+              <BarrierFreeLegend />
+              <div className="flex-1 min-w-[200px]">
+                <PoiDescription tappedPoi={tappedPoi} />
+              </div>
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center p-4 bg-slate-50 border border-dashed border-slate-300 rounded-lg">

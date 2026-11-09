@@ -12,6 +12,8 @@ import SearchActionButton from '../SearchActionButton'
 import ShareButton from '../ShareButton'
 import MapView from '../MapView'
 import BarrierFreeLegend from '../BarrierFreeLegend'
+import PoiDescription from '../PoiDescription'
+import { useDraggableHeight, MAP_HEIGHT_STORAGE_KEY_MOBILE } from '../../hooks/useDraggableHeight'
 
 /**
  * (#59) モバイル「検索」タブ
@@ -29,6 +31,19 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
   const { search, cancel } = useSearch()
   const { searchSource, searchMode, bbox, selectedMunicipality } = state
   const [boundsVersion, setBoundsVersion] = useState(0)
+  // 地図上のマーカータップで選択されたPOI（説明枠の表示用）
+  const [tappedPoi, setTappedPoi] = useState(null)
+  useEffect(() => {
+    if (state.status === 'success') setTappedPoi(null)
+  }, [state.results, state.status])
+  // 地図の高さをドラッグで変更（既定240px）。
+  // 高さ変更に合わせて map.resize() を呼ぶことで、MapLibre の描画が
+  // ドラッグに追随する（MapView側のResizeObserverは2重の安全策）
+  const handleMapResize = () => {
+    const map = getMapInstance()
+    if (map && typeof map.resize === 'function') map.resize()
+  }
+  const mapHeight = useDraggableHeight({ defaultHeight: 240, minHeight: 160, maxHeight: 480, storageKey: MAP_HEIGHT_STORAGE_KEY_MOBILE, onResize: handleMapResize })
 
   const switchSource = (source) => {
     if (source === state.searchSource) return
@@ -119,14 +134,36 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
           <MunicipalitySearch variant="mobile" />
         ) : (
           <>
-            {/* 1) 地図: 移動・拡大で検索範囲を指定 (#60) */}
-            <div className="relative h-[240px] rounded-xl overflow-hidden border border-slate-200">
-              <MapView onMarkerClick={onMarkerClick} />
+            {/* 1) 地図: 移動・拡大で検索範囲を指定 (#60)。
+                地図下のハンドルをドラッグで高さを任意に変更可。
+                ラウンド枠（rounded-xl）は地図+ハンドルの外側wrapperに持ち、
+                地図コンテナは既定 h-[240px] のまま（ドラッグ後はstyle上書き） */}
+            <div className="rounded-xl overflow-hidden border border-slate-200">
+              <div className="relative h-[240px]" style={mapHeight.containerStyle}>
+                <MapView
+                  onMarkerClick={onMarkerClick}
+                  onMarkerTap={(result) => {
+                    setTappedPoi(result)
+                    dispatch({ type: 'SET_ACTIVE_RESULT', payload: `${result.type}/${result.id}` })
+                  }}
+                />
+              </div>
+              {/* 高さドラッグハンドル（PC版と同一のフック） */}
+              <div
+                {...mapHeight.handleProps}
+                className="h-3 bg-slate-100 border-t border-slate-200 flex items-center justify-center"
+              >
+                <span className="w-8 h-1 rounded-full bg-slate-300" />
+              </div>
             </div>
 
-            {/* (#62) バリアフリー凡例: 地図の下（地図上のオーバーレイ廃止）。
-                表示条件は BarrierFreeLegend 自身が context で判定する。 */}
-            <BarrierFreeLegend />
+            {/* 凡例＋POI説明枠（横並び。狭い画面では折り返し） */}
+            <div className="flex flex-wrap gap-2">
+              <BarrierFreeLegend />
+              <div className="flex-1 min-w-[200px]">
+                <PoiDescription tappedPoi={tappedPoi} />
+              </div>
+            </div>
 
             {/* 2) エリア */}
             <section className="bg-slate-50 border border-slate-200 rounded-xl p-3" aria-label="検索範囲">
