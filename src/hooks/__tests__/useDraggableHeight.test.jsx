@@ -3,7 +3,8 @@
  * useDraggableHeight — コンテナの高さをドラッグで変更するフック
  *
  * - 未操作は height=null（既定クラスのままで、デフォルト表示は不変）
- * - 上方向ドラッグで高さが増大、下方向で減少（クランプ: minHeight〜maxHeight）
+ * - ハンドル（地図の下端）はポインタと同方向に動く: 下方向ドラッグで増大、
+ *   上方向で減少（クランプ: minHeight〜maxHeight）
  * - pointerup/pointercancel でドラッグ終了（以降のmoveは反映されない）
  * - handleProps に touch-action: none（タッチ中のページスクロール防止）
  */
@@ -41,21 +42,21 @@ describe('useDraggableHeight', () => {
     expect(view.getByTestId('container').style.height).toBe('')
   })
 
-  it('上方向ドラッグで高さが大きくなる（520 → 620）', () => {
+  it('上方向ドラッグで高さが小さくなる（520 → 420）', () => {
     const view = render(<TestMap />)
     const handle = view.getByTestId('handle')
     fireEvent.pointerDown(handle, { clientY: 500 })
     fireEvent.pointerMove(handle, { clientY: 400 }) // 100px上
-    expect(view.getByTestId('container').style.height).toBe('620px')
+    expect(view.getByTestId('container').style.height).toBe('420px')
     fireEvent.pointerUp(handle)
   })
 
-  it('下方向ドラッグで高さが小さくなる（520 → 420）', () => {
+  it('下方向ドラッグで高さが大きくなる（520 → 620）', () => {
     const view = render(<TestMap />)
     const handle = view.getByTestId('handle')
     fireEvent.pointerDown(handle, { clientY: 100 })
     fireEvent.pointerMove(handle, { clientY: 200 }) // 100px下
-    expect(view.getByTestId('container').style.height).toBe('420px')
+    expect(view.getByTestId('container').style.height).toBe('620px')
     fireEvent.pointerUp(handle)
   })
 
@@ -63,7 +64,7 @@ describe('useDraggableHeight', () => {
     const view = render(<TestMap />)
     const handle = view.getByTestId('handle')
     fireEvent.pointerDown(handle, { clientY: 100 })
-    fireEvent.pointerMove(handle, { clientY: -500 }) // 520+600=1120 → 900
+    fireEvent.pointerMove(handle, { clientY: 700 }) // 520+600=1120 → 900
     expect(view.getByTestId('container').style.height).toBe('900px')
     fireEvent.pointerUp(handle)
   })
@@ -71,8 +72,8 @@ describe('useDraggableHeight', () => {
   it('minHeight を下回るドラッグは下限値にクランプされる', () => {
     const view = render(<TestMap />)
     const handle = view.getByTestId('handle')
-    fireEvent.pointerDown(handle, { clientY: 0 })
-    fireEvent.pointerMove(handle, { clientY: 500 }) // 520-500=20 → 200
+    fireEvent.pointerDown(handle, { clientY: 700 })
+    fireEvent.pointerMove(handle, { clientY: 100 }) // 520-600=-80 → 200
     expect(view.getByTestId('container').style.height).toBe('200px')
     fireEvent.pointerUp(handle)
   })
@@ -84,20 +85,20 @@ describe('useDraggableHeight', () => {
     fireEvent.pointerMove(handle, { clientY: 400 })
     fireEvent.pointerUp(handle)
     fireEvent.pointerMove(handle, { clientY: 100 })
-    expect(view.getByTestId('container').style.height).toBe('620px')
+    expect(view.getByTestId('container').style.height).toBe('420px')
   })
 
   it('2回目のドラッグは1回目で変更された高さを基準にする', () => {
     const view = render(<TestMap />)
     const handle = view.getByTestId('handle')
-    // 1回目: 520 → 620
+    // 1回目: 520 → 420（100px上）
     fireEvent.pointerDown(handle, { clientY: 500 })
     fireEvent.pointerMove(handle, { clientY: 400 })
     fireEvent.pointerUp(handle)
-    // 2回目: 620から100px上 → 720
+    // 2回目: 420から100px上 → 320
     fireEvent.pointerDown(handle, { clientY: 400 })
     fireEvent.pointerMove(handle, { clientY: 300 })
-    expect(view.getByTestId('container').style.height).toBe('720px')
+    expect(view.getByTestId('container').style.height).toBe('320px')
     fireEvent.pointerUp(handle)
   })
 
@@ -139,7 +140,18 @@ describe('localStorage永続化', () => {
     fireEvent.pointerDown(handle, { clientY: 500 })
     fireEvent.pointerMove(handle, { clientY: 400 })
     fireEvent.pointerUp(handle)
-    expect(localStorage.getItem(KEY)).toBe('620')
+    expect(localStorage.getItem(KEY)).toBe('420')
+  })
+
+  it('ハンドルへのタップ（移動なし）は保存しない・onResizeも発火しない', () => {
+    const onResize = vi.fn()
+    const view = render(<TestMap over={{ onResize, storageKey: KEY }} />)
+    const handle = view.getByTestId('handle')
+    fireEvent.pointerDown(handle, { clientY: 500 })
+    fireEvent.pointerUp(handle)
+    expect(onResize).not.toHaveBeenCalled()
+    expect(localStorage.getItem(KEY)).toBeNull()
+    expect(view.getByTestId('container').style.height).toBe('')
   })
 
   it('storageKey未指定ならlocalStorageに保存しない', () => {
@@ -160,7 +172,7 @@ describe('onResize（地図描画の追随）', () => {
     fireEvent.pointerDown(handle, { clientY: 500 })
     fireEvent.pointerMove(handle, { clientY: 400 })
     fireEvent.pointerUp(handle)
-    expect(onResize).toHaveBeenLastCalledWith(620)
+    expect(onResize).toHaveBeenLastCalledWith(420)
     expect(onResize.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -173,24 +185,39 @@ describe('onResize（地図描画の追随）', () => {
     const view = render(<TestMap over={{ onResize }} />)
     const handle = view.getByTestId('handle')
 
-    // 最初のmoveは呼ばれる（530）。100ms以内の2回目はスロットリング
+    // 最初のmoveは呼ばれる（510）。100ms以内の2回目はスロットリング
     fireEvent.pointerDown(handle, { clientY: 500 })
     fireEvent.pointerMove(handle, { clientY: 490 })
     fireEvent.pointerMove(handle, { clientY: 480 })
     expect(onResize).toHaveBeenCalledTimes(1)
-    expect(onResize).toHaveBeenLastCalledWith(530)
+    expect(onResize).toHaveBeenLastCalledWith(510)
 
-    // 100ms経過後のmoveは呼ばれる（550）
+    // 100ms経過後のmoveは呼ばれる（490）
     t += 100
     fireEvent.pointerMove(handle, { clientY: 470 })
     expect(onResize).toHaveBeenCalledTimes(2)
-    expect(onResize).toHaveBeenLastCalledWith(550)
+    expect(onResize).toHaveBeenLastCalledWith(490)
 
     // pointerupは100msが経っていなくても必ず最終高さで呼ばれる
     fireEvent.pointerUp(handle)
     expect(onResize).toHaveBeenCalledTimes(3)
-    expect(onResize).toHaveBeenLastCalledWith(550)
+    expect(onResize).toHaveBeenLastCalledWith(490)
 
     nowSpy.mockRestore()
+  })
+
+  it('高さが変わらないうち（クランプで頭打ち）に終了してもonResize・保存はしない', () => {
+    const onResize = vi.fn()
+    const key = 'test.mapHeight.clamp'
+    localStorage.setItem(key, '900') // 上限の保存値から始める
+    const view = render(<TestMap over={{ onResize, storageKey: key }} />)
+    const handle = view.getByTestId('handle')
+    // 下方向（大きくする方向）にドラッグ → 上限900で頭打ち（不変）
+    fireEvent.pointerDown(handle, { clientY: 500 })
+    fireEvent.pointerMove(handle, { clientY: 600 })
+    expect(view.getByTestId('container').style.height).toBe('900px')
+    fireEvent.pointerUp(handle)
+    expect(onResize).not.toHaveBeenCalled()
+    expect(localStorage.getItem(key)).toBe('900')
   })
 })

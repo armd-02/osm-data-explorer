@@ -70,6 +70,17 @@ describe('PC（SearchTabContent）', () => {
     expect(handle.previousElementSibling).toBe(mapContainer)
   })
 
+  it('ハンドル当たり判定の高さは28px以上（h-7）。中央のつかみ線は細いままでよい', () => {
+    const view = renderInContext(
+      <SearchTabContent searchCollapsed={false} setSearchCollapsed={vi.fn()} showMap setShowMap={vi.fn()} />,
+      createInitialState()
+    )
+    const handle = view.container.querySelector('[role="separator"][aria-orientation="horizontal"]')
+    expect(handle.className).toContain('h-7') // 当たり判定 28px 以上
+    // 中央のつかみ線（グリップバー）は細いままでよい（h-1）
+    expect(handle.firstElementChild.className).toContain('h-1')
+  })
+
   it('ハンドルをドラッグすると地図コンテナの高さがインラインstyleで上書きされる', () => {
     const view = renderInContext(
       <SearchTabContent searchCollapsed={false} setSearchCollapsed={vi.fn()} showMap setShowMap={vi.fn()} />,
@@ -81,10 +92,10 @@ describe('PC（SearchTabContent）', () => {
 
     act(() => {
       fireEvent.pointerDown(handle, { clientY: 500 })
-      fireEvent.pointerMove(handle, { clientY: 400 }) // 100px上
+      fireEvent.pointerMove(handle, { clientY: 400 }) // 100px上（ハンドル＝地図下端なので縮小）
       fireEvent.pointerUp(handle)
     })
-    expect(mapContainer.style.height).toBe('620px')
+    expect(mapContainer.style.height).toBe('420px')
     // 既定クラスは維持（上書きはstyleのみ）
     expect(mapContainer.className).toMatch(/h-\[520px\]/)
     // MapLibreの描画が追随（map.resize() が呼ばれる）
@@ -126,18 +137,18 @@ describe('PC（SearchTabContent）', () => {
     const mapContainer = mapContainerOf(view, 'pc')
     const handle = view.container.querySelector('[role="separator"][aria-orientation="horizontal"]')
 
-    // 上限: 520 + 481 = 1001 → 1000 に丸めクランプ
+    // 上限: 520 + 481 = 1001 → 1000 に丸めクランプ（下方向ドラッグで増大）
     act(() => {
-      fireEvent.pointerDown(handle, { clientY: 500 })
-      fireEvent.pointerMove(handle, { clientY: 19 })
+      fireEvent.pointerDown(handle, { clientY: 19 })
+      fireEvent.pointerMove(handle, { clientY: 500 })
       fireEvent.pointerUp(handle)
     })
     expect(mapContainer.style.height).toBe('1000px')
 
-    // 下限: 1000 - 721 = 279 → 280 に丸めクランプ
+    // 下限: 1000 - 721 = 279 → 280 に丸めクランプ（上方向ドラッグで減少）
     act(() => {
-      fireEvent.pointerDown(handle, { clientY: 100 })
-      fireEvent.pointerMove(handle, { clientY: 821 })
+      fireEvent.pointerDown(handle, { clientY: 821 })
+      fireEvent.pointerMove(handle, { clientY: 100 })
       fireEvent.pointerUp(handle)
     })
     expect(mapContainer.style.height).toBe('280px')
@@ -159,6 +170,17 @@ describe('モバイル（MobileSearchTab・地図モード）', () => {
     expect(handle.previousElementSibling).toBe(mapContainer)
   })
 
+  it('ハンドル当たり判定の高さは28px以上（h-7）。中央のつかみ線は細いままでよい', () => {
+    const view = renderInContext(
+      <MobileSearchTab onViewResults={vi.fn()} />,
+      createInitialState()
+    )
+    const handle = view.container.querySelector('[role="separator"][aria-orientation="horizontal"]')
+    expect(handle.className).toContain('h-7') // 当たり判定 28px 以上
+    // 中央のつかみ線（グリップバー）は細いままでよい（h-1）
+    expect(handle.firstElementChild.className).toContain('h-1')
+  })
+
   it('ハンドルをドラッグすると地図コンテナの高さがインラインstyleで上書きされる', () => {
     const view = renderInContext(
       <MobileSearchTab onViewResults={vi.fn()} />,
@@ -169,8 +191,8 @@ describe('モバイル（MobileSearchTab・地図モード）', () => {
     expect(mapContainer.style.height).toBe('')
 
     act(() => {
-      fireEvent.pointerDown(handle, { clientY: 300 })
-      fireEvent.pointerMove(handle, { clientY: 200 }) // 100px上
+      fireEvent.pointerDown(handle, { clientY: 200 })
+      fireEvent.pointerMove(handle, { clientY: 300 }) // 100px下（ハンドル＝地図下端なので増大）
       fireEvent.pointerUp(handle)
     })
     expect(mapContainer.style.height).toBe('340px')
@@ -189,18 +211,18 @@ describe('モバイル（MobileSearchTab・地図モード）', () => {
     const mapContainer = mapContainerOf(view, 'mobile')
     const handle = view.container.querySelector('[role="separator"][aria-orientation="horizontal"]')
 
-    // 上限: 240 + 241 = 481 → 480 に丸めクランプ
+    // 上限: 240 + 241 = 481 → 480 に丸めクランプ（下方向ドラッグで増大）
     act(() => {
-      fireEvent.pointerDown(handle, { clientY: 500 })
-      fireEvent.pointerMove(handle, { clientY: 259 })
+      fireEvent.pointerDown(handle, { clientY: 259 })
+      fireEvent.pointerMove(handle, { clientY: 500 })
       fireEvent.pointerUp(handle)
     })
     expect(mapContainer.style.height).toBe('480px')
 
-    // 下限: 480 - 321 = 159 → 160 に丸めクランプ
+    // 下限: 480 - 321 = 159 → 160 に丸めクランプ（上方向ドラッグで減少）
     act(() => {
-      fireEvent.pointerDown(handle, { clientY: 100 })
-      fireEvent.pointerMove(handle, { clientY: 421 })
+      fireEvent.pointerDown(handle, { clientY: 421 })
+      fireEvent.pointerMove(handle, { clientY: 100 })
       fireEvent.pointerUp(handle)
     })
     expect(mapContainer.style.height).toBe('160px')

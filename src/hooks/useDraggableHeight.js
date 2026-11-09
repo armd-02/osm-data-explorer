@@ -53,7 +53,8 @@ function writeStored(storageKey, height) {
  *   ドラッグ中は RESIZE_THROTTLE_MS 間隔でスロットリング、ドラッグ終了時
  *   には最終高さで必ず呼ばれる。地図描画の追随（map.resize()等）に使う。
  *
- * ドラッグ計算: 上方向ドラッグで高さを大きく、下方向で小さくする。
+ * ドラッグ計算: ハンドルは地図の下端なので、ポインタと同方向に動く。
+ * 下方向ドラッグで高さを大きく、上方向で小さくする（ポインタ1pxあたり高さ1px）。
  * 変更後の高さは minHeight〜maxHeight の範囲に丸めてクランプされる。
  */
 export function useDraggableHeight({ defaultHeight, minHeight = 160, maxHeight = 800, storageKey = null, onResize = null } = {}) {
@@ -70,13 +71,20 @@ export function useDraggableHeight({ defaultHeight, minHeight = 160, maxHeight =
     if (e.button != null && e.button !== 0) return
     e.preventDefault()
     dragRef.current = { startY: e.clientY, startHeight: height ?? defaultHeight }
+    // 前回ドラッグの高さが残ったまま終了処理に渡ると、タップ（移動なし）でも
+    // 保存・地図resizeが発生するため、ドラッグ開始時にリセットする
+    lastHeightRef.current = null
     e.currentTarget?.setPointerCapture?.(e.pointerId)
   }
 
   const onPointerMove = (e) => {
     const drag = dragRef.current
     if (!drag) return
-    const next = clamp(Math.round(drag.startHeight - (e.clientY - drag.startY)), minHeight, maxHeight)
+    // ハンドル（地図の下端）はポインタと同方向に動く: 下ドラッグで大きく、上ドラッグで小さく
+    const next = clamp(Math.round(drag.startHeight + (e.clientY - drag.startY)), minHeight, maxHeight)
+    // 高さが変わらなければ（クランプで頭打ち・微小移動など）何も更新しない。
+    // 変更がないのに保存・resizeを発火させないためのゲート。
+    if (next === (lastHeightRef.current ?? drag.startHeight)) return
     lastHeightRef.current = next
     setHeight(next)
     // 地図の描画追随: ドラッグ中はスロットリング（毎moveでのresizeを避ける）
@@ -92,10 +100,12 @@ export function useDraggableHeight({ defaultHeight, minHeight = 160, maxHeight =
   const endDrag = (e) => {
     dragRef.current = null
     e.currentTarget?.releasePointerCapture?.(e.pointerId)
+    // lastHeightRef がある＝このドラッグ中に高さが変更された、という意味。
+    // （onPointerDown でリセットし、onPointerMove は変更時のみ更新するため）
     if (storageKey && lastHeightRef.current != null) {
       writeStored(storageKey, lastHeightRef.current)
     }
-    // ドラッグ終了時は必ず最終高さで通知（描画が確実に追いつく）
+    // 高さ変更があった場合、終了時は必ず最終高さで通知（描画が確実に追いつく）
     if (onResize && lastHeightRef.current != null) {
       lastResizeAtRef.current = Date.now()
       onResize(lastHeightRef.current)

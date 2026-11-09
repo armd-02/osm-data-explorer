@@ -275,7 +275,7 @@ export function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap,
             {/* 高さドラッグハンドル: 地図下をドラッグで地図の高さを変更（PC・モバイル共通） */}
             <div
               {...mapHeight.handleProps}
-              className="h-3 shrink-0 bg-slate-100 border-t border-slate-200 flex items-center justify-center"
+              className="h-7 shrink-0 bg-slate-100 border-t border-slate-200 flex items-center justify-center"
             >
               <span className="w-8 h-1 rounded-full bg-slate-300" />
             </div>

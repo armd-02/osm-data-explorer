@@ -151,7 +151,7 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
               {/* 高さドラッグハンドル（PC版と同一のフック） */}
               <div
                 {...mapHeight.handleProps}
-                className="h-3 bg-slate-100 border-t border-slate-200 flex items-center justify-center"
+                className="h-7 bg-slate-100 border-t border-slate-200 flex items-center justify-center"
               >
                 <span className="w-8 h-1 rounded-full bg-slate-300" />
               </div>
