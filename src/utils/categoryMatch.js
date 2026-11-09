@@ -11,6 +11,11 @@ export function categoryMatchesElement(categoryId, element) {
   if (!categoryId) return false
   const cat = getCategoryById(categoryId)
   if (!cat || !Array.isArray(cat.tags)) return false
+  // (#62) バリアフリーカテゴリはOSMタグ条件を持たない（要素種別で検索）。
+  // バリアフリー検索の結果として正規化された要素（bf フィールドを持つ）に一致させる。
+  if (categoryId === 'barrier_free') {
+    return !!(element && element.bf)
+  }
   const tags = (element && element.tags) || {}
   const matches = ({ key, values }) =>
     Array.isArray(values) ? values.includes(tags[key]) : tags[key] === values

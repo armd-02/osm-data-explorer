@@ -212,3 +212,110 @@ describe('MobileListTab: カテゴリ選択肢は取得データに基づいて�
     expect(screen.queryByRole('combobox', { name: 'カテゴリで絞り込む' })).toBeNull()
   })
 })
+
+// ===== (#62) バリアフリー検索結果 =====
+const bfFootway = {
+  type: 'way',
+  id: 100,
+  name: '中央通り歩道',
+  lat: 34.003333,
+  lon: 135.01,
+  tags: { highway: 'footway', tactile_paving: 'yes', name: '中央通り歩道' },
+  osmId: 'way/100',
+  bf: { kind: 'way', tactile: 'yes', lengthM: 152, kerb: null, hasSound: false, hasVibration: false, geometry: [[135.0, 34.0], [135.01, 34.01], [135.02, 34.0]] }
+}
+const bfKerb = {
+  type: 'node',
+  id: 200,
+  name: null,
+  lat: 34.1,
+  lon: 135.1,
+  tags: { barrier: 'kerb' },
+  osmId: 'node/200',
+  bf: { kind: 'node', tactile: null, lengthM: null, kerb: null, hasSound: false, hasVibration: false, geometry: [135.1, 34.1] }
+}
+const bfUnnamedFootway = {
+  type: 'way',
+  id: 101,
+  name: null,
+  lat: 34.003,
+  lon: 135.01,
+  tags: { highway: 'footway', tactile_paving: 'yes' },
+  osmId: 'way/101',
+  bf: { kind: 'way', tactile: 'yes', lengthM: 80, kerb: null, hasSound: false, hasVibration: false, geometry: [[135.0, 34.0], [135.01, 34.0]] }
+}
+
+const BF_MOBILE_RESULTS = [bfFootway, bfKerb]
+
+function bfMobileActions(results = BF_MOBILE_RESULTS) {
+  return [
+    { type: 'SET_RESULTS', payload: results },
+    { type: 'SET_RESULT_KIND', payload: 'barrier_free' },
+    { type: 'SET_STATUS', payload: 'success' }
+  ]
+}
+
+describe('MobileListTab: バリアフリー検索結果 (#62)', () => {
+  it('専用カード（タイプ・点字ブロック・長さ・OSM ID・iDリンク）を表示する', () => {
+    render(<Harness preActions={bfMobileActions()} />)
+
+    expect(screen.getByText('2件中、2件を表示')).toBeTruthy()
+    expect(screen.getByText('歩道')).toBeTruthy()
+    expect(screen.getByText('中央通り歩道')).toBeTruthy()
+    expect(screen.getByText('点字ブロック 有')).toBeTruthy()
+    expect(screen.getByText('152 m')).toBeTruthy()
+    // 名称が無い縁石は表示名「縁石（未記録）」をタイトルに表示する（#62 仕様4）
+    expect(screen.getByText('縁石（未記録）')).toBeTruthy()
+    expect(screen.getByText('way/100')).toBeTruthy()
+    const links = screen.getAllByRole('link', { name: /iDで編集/ })
+    const hrefs = links.map((a) => a.getAttribute('href'))
+    expect(hrefs).toContain('https://www.openstreetmap.org/edit?node=way%2F100')
+    expect(hrefs).toContain('https://www.openstreetmap.org/edit?node=node%2F200')
+  })
+
+  it('施設向けのコントロール（カテゴリ選択・Webサイトチェック）は表示しない', () => {
+    render(<Harness preActions={bfMobileActions()} />)
+    expect(screen.queryByRole('combobox', { name: 'カテゴリで絞り込む' })).toBeNull()
+    expect(screen.queryByText('Webサイトがあるものだけ')).toBeNull()
+    expect(screen.queryByRole('combobox', { name: '属性の欠落で絞る' })).toBeNull()
+  })
+
+  it('タイプフィルタで node のみを選択すると way 卡片が消える', () => {
+    render(<Harness preActions={bfMobileActions()} />)
+    expect(screen.getByText('中央通り歩道')).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('combobox', { name: '要素種別で絞り込む' }), { target: { value: 'node' } })
+
+    expect(screen.queryByText('中央通り歩道')).toBeNull()
+    expect(screen.getByText('縁石（未記録）')).toBeTruthy()
+  })
+
+  it('名称が無名の歩道は表示名「歩道（点字ブロックあり）」をタイトルに表示し、重複バッジを省略する', () => {
+    render(<Harness preActions={bfMobileActions([bfUnnamedFootway])} />)
+
+    // タイトル: タグから生成した表示名
+    expect(screen.getByText('歩道（点字ブロックあり）')).toBeTruthy()
+    // タイプバッジ・点字ブロックバッジは表示名に含むので省略
+    expect(screen.queryByText('歩道')).toBeNull()
+    expect(screen.queryByText('点字ブロック 有')).toBeNull()
+    // 長さバッジは表示名に含まれないのでそのまま表示
+    expect(screen.getByText('80 m')).toBeTruthy()
+  })
+
+  it('リセットで表示フィルタが解除される（フォームのカテゴリは残る）', () => {
+    const log = []
+    render(<Harness preActions={bfMobileActions()} log={log} />)
+    fireEvent.change(screen.getByRole('combobox', { name: '要素種別で絞り込む' }), { target: { value: 'node' } })
+    fireEvent.click(screen.getByRole('button', { name: 'リセット' }))
+    expect(screen.getByText('中央通り歩道')).toBeTruthy()
+    // SET_SIMPLE_SEARCH / SET_MUNICIPALITY_SEARCH へのdispatchは無い（検索条件は不変）
+    expect(log.some((a) => a.type === 'SET_SIMPLE_SEARCH')).toBe(false)
+    expect(log.some((a) => a.type === 'SET_MUNICIPALITY_SEARCH')).toBe(false)
+    expect(log.some((a) => a.type === 'SET_RESULT_FILTERS' && a.payload.typeFilter === 'all')).toBe(true)
+  })
+
+  it('0件時はバリアフリー向けのメッセージを表示する', () => {
+    render(<Harness preActions={bfMobileActions([])} />)
+    expect(screen.getByText(/バリアフリー関連の登録がありません/)).toBeTruthy()
+  })
+})

@@ -8,6 +8,8 @@ import {
   filterByKeyword,
   OverpassError
 } from '../utils/overpass'
+import { buildBarrierFreeQuery } from '../utils/barrierFree'
+import { parseBarrierFreeResponse, isBarrierFreeCriteria } from '../utils/barrierFreeResults'
 import { checkBboxSize } from '../utils/geo'
 import { isValidBbox } from '../utils/searchBbox'
 
@@ -84,20 +86,37 @@ export function useSearch() {
     abortRef.current = controller
 
     try {
-      let query, keyword
+      let query, keyword, queryKind = 'poi'
 
       if (criteria && criteria.query) {
         // (#47) クリック時点のスナップショットのクエリをそのまま実行
         query = criteria.query
         keyword = criteria.keyword || ''
+        // (#62) buildSearchCriteria が決定したクエリ種別（'poi' | 'barrier_free'）
+        queryKind = criteria.queryKind === 'barrier_free' ? 'barrier_free' : 'poi'
       } else {
         // legacy: 最新のstateからクエリを生成
         const s = stateRef.current
         if (s.searchSource === 'municipality') {
           const ms = s.municipalitySearch || s.simpleSearch
-          ;({ query, keyword } = buildPoiQuery(bbox, ms.category, ms.keyword))
+          // (#62) バリアフリー（カテゴリまたは目的）: 専用のバリアフリークエリ
+          if (isBarrierFreeCriteria(ms.category, ms.purpose)) {
+            queryKind = 'barrier_free'
+            query = buildBarrierFreeQuery(bbox)
+            keyword = ms.keyword || ''
+          } else {
+            ;({ query, keyword } = buildPoiQuery(bbox, ms.category, ms.keyword))
+          }
         } else if (s.searchMode === 'simple') {
-          ;({ query, keyword } = buildSimpleQuery(bbox, s.simpleSearch.category, s.simpleSearch.keyword))
+          const ss = s.simpleSearch
+          // (#62) バリアフリー（カテゴリまたは目的）: 専用のバリアフリークエリ
+          if (isBarrierFreeCriteria(ss.category, ss.purpose)) {
+            queryKind = 'barrier_free'
+            query = buildBarrierFreeQuery(bbox)
+            keyword = ss.keyword || ''
+          } else {
+            ;({ query, keyword } = buildSimpleQuery(bbox, ss.category, ss.keyword))
+          }
         } else {
           const { tags, keyword: kw, useAnd } = s.advancedSearch
           if (tags.length === 0 && !kw) {
@@ -115,12 +134,17 @@ export function useSearch() {
       }
 
       const { results, meta } = await executeOverpassQuery(query, {
-        signal: controller.signal
+        signal: controller.signal,
+        // (#62) バリアフリー検索: 要素をバリアフリー形式→共通結果形状にパース
+        ...(queryKind === 'barrier_free' ? { parse: parseBarrierFreeResponse } : {})
       })
 
-      const filtered = filterByKeyword(results, keyword)
+      // (#62) バリアフリー検索: キーワード絞り込みを適用しない
+      // （歩道・縁石・音声案内ノードは name が無いことが多く、絞り込むと結果が消える）
+      const filtered = queryKind === 'barrier_free' ? results : filterByKeyword(results, keyword)
 
       dispatch({ type: 'SET_RESULTS', payload: filtered })
+      dispatch({ type: 'SET_RESULT_KIND', payload: queryKind })
       dispatch({ type: 'SET_FETCH_META', payload: meta })
       dispatch({ type: 'SET_STATUS', payload: 'success' })
     } catch (error) {

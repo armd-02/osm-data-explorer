@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // getCategoryById をモックして、カテゴリ定義がなくても
 // 'or'/'and' 両ロジックの判定をテストできる。
@@ -69,5 +69,38 @@ describe('categoryMatchesElement (#59)', () => {
     })
     expect(categoryMatchesElement('cafe', {})).toBe(false)
     expect(categoryMatchesElement('cafe', { type: 'node', id: 1 })).toBe(false)
+  })
+})
+
+describe('categoryMatchesElement — バリアフリーカテゴリ (#62)', () => {
+  beforeEach(() => {
+    // (#62) バリアフリーカテゴリはOSMタグ条件を持たない（tags: []）
+    mockCategories.set('barrier_free', { id: 'barrier_free', tags: [], logic: 'or' })
+    mockCategories.set('cafe', {
+      id: 'cafe',
+      tags: [{ key: 'amenity', values: ['cafe'] }],
+      logic: 'or',
+    })
+  })
+
+  it('barrier_free は bf フィールドを持つ要素（正規化済みバリアフリー結果）に一致する', () => {
+    const bfResult = { type: 'way', id: 100, tags: { highway: 'footway' }, bf: { kind: 'way' } }
+    expect(categoryMatchesElement('barrier_free', bfResult)).toBe(true)
+  })
+
+  it('bf フィールドが無い要素には一致しない（tags: [] の generic 判定で通らない）', () => {
+    const facilityResult = { type: 'node', id: 1, tags: { amenity: 'cafe' } }
+    expect(categoryMatchesElement('barrier_free', facilityResult)).toBe(false)
+  })
+
+  it('bf 要素でも他のカテゴリは通常通りタグで判定される（bf の影響を受けない）', () => {
+    const bfResult = { type: 'way', id: 100, tags: { highway: 'footway' }, bf: { kind: 'way' } }
+    expect(categoryMatchesElement('cafe', bfResult)).toBe(false)
+    expect(categoryMatchesElement('cafe', el({ amenity: 'cafe' }))).toBe(true)
+  })
+
+  it('要素が null/undefined でもクラッシュしない', () => {
+    expect(categoryMatchesElement('barrier_free', null)).toBe(false)
+    expect(categoryMatchesElement('barrier_free', undefined)).toBe(false)
   })
 })

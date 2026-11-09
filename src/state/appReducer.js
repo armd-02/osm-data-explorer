@@ -27,6 +27,9 @@ export function createInitialState() {
     bboxSource: null,
     status: 'idle',
     results: [],
+    // (#62) 直近検索の結果種別: 'poi'（施設系）| 'barrier_free' | null（未取得）
+    // バリアフリー検索の結果一覧は専用レイアウトで表示する（ResultsPanel / MobileListTab）
+    resultKind: null,
     error: null,
     errorType: null,
     errorSuggestion: null,
@@ -109,12 +112,15 @@ export function appReducer(state, action) {
     case 'SET_RESULTS':
       // 新規検索時はアクティブ結果のハイライトをリセット（旧結果へのパンを防ぐ）
       return syncCategoryFilters({ ...state, results: action.payload, activeResultId: null })
+    case 'SET_RESULT_KIND':
+      // (#62) 結果種別（'poi' | 'barrier_free'）を設定（useSearch が SET_RESULTS の後に送出）
+      return { ...state, resultKind: action.payload }
     case 'SET_FETCH_META':
       return { ...state, fetchMeta: action.payload }
     case 'SET_ERROR':
       return { ...state, error: action.payload, errorType: action.errorType || null, errorSuggestion: action.errorSuggestion || null }
     case 'CLEAR_RESULTS':
-      return { ...state, results: [], error: null, errorType: null, errorSuggestion: null, status: 'idle', fetchMeta: null }
+      return { ...state, results: [], resultKind: null, error: null, errorType: null, errorSuggestion: null, status: 'idle', fetchMeta: null }
     case 'SET_ACTIVE_RESULT':
       return { ...state, activeResultId: action.payload }
     case 'SET_SEARCH_SOURCE': {

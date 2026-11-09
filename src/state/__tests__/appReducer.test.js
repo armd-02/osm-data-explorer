@@ -200,3 +200,26 @@ describe('SET_BBOX / bboxSource (Task 2)', () => {
     expect(s.bboxSource).toBeNull()
   })
 })
+
+describe('SET_RESULT_KIND (#62)', () => {
+  it('createInitialState では resultKind は null', () => {
+    expect(createInitialState().resultKind).toBeNull()
+  })
+
+  it('SET_RESULT_KIND で結果種別を設定する', () => {
+    let s = createInitialState()
+    s = appReducer(s, { type: 'SET_RESULT_KIND', payload: 'barrier_free' })
+    expect(s.resultKind).toBe('barrier_free')
+    s = appReducer(s, { type: 'SET_RESULT_KIND', payload: 'poi' })
+    expect(s.resultKind).toBe('poi')
+  })
+
+  it('CLEAR_RESULTS で resultKind が null にリセットされる', () => {
+    let s = createInitialState()
+    s = appReducer(s, { type: 'SET_RESULTS', payload: [{ type: 'way', id: 1, bf: {} }] })
+    s = appReducer(s, { type: 'SET_RESULT_KIND', payload: 'barrier_free' })
+    s = appReducer(s, { type: 'CLEAR_RESULTS' })
+    expect(s.results).toEqual([])
+    expect(s.resultKind).toBeNull()
+  })
+})

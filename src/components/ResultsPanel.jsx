@@ -10,6 +10,8 @@ import AttributeCompleteness from './AttributeCompleteness'
 import { missingAttributesOf, ATTRIBUTE_LABELS } from '../utils/statistics'
 import { buildIdElementUrl } from '../utils/editLinks'
 import { keyInfoFor } from '../utils/categoryProfiles'
+import { barrierFreeTypeLabel, tactileStatus, lengthLabel, signalLabels } from '../utils/barrierFreeResults'
+import { barrierFreeLabel } from '../utils/barrierFree'
 
 /**
  * 検索結果一覧（PC）
@@ -22,6 +24,13 @@ const DEFAULT_FILTERS = { nameFilter: '', typeFilter: 'all', catFilter: '', purp
 
 function ResultsPanel() {
   const { state, dispatch } = useApp()
+
+  // (#62) バリアフリー検索の結果: 施設向けの列（住所・電話・バリアフリー属性）が
+  // 意味を持たないため、タイプ・点字ブロック・長さ・案内信号の専用一覧を表示する
+  if (state.resultKind === 'barrier_free') {
+    return <BarrierFreeResultsList />
+  }
+
   const { results, resultFilters, fetchMeta, searchSource, selectedMunicipality } = state
 
   // (#44) カテゴリ選択は検索フォームと一覧フィルタを同じ値として扱う。
@@ -57,7 +66,7 @@ function ResultsPanel() {
   )
 
   return (
-    <aside className="bg-white rounded-lg border border-slate-200 flex flex-col flex-1 min-w-0">
+    <aside className="bg-white rounded-lg border border-slate-200 flex flex-col max-h-[640px] min-w-0">
       <div className="p-4 border-b border-slate-200">
         <div className="text-sm text-slate-600">
           {narrowing
@@ -165,7 +174,8 @@ function ResultsPanel() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      {/* 高さ上限640px: 結果が長いと内部スクロールになる（ページ全体が際限なく長くなるのを防ぐ） */}
+      <div className="flex-1 min-h-0 overflow-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500">
             <tr>
@@ -292,6 +302,158 @@ function ResultsPanel() {
       </div>
     </aside>
   )
+}
+
+/**
+ * (#62) バリアフリー検索の結果一覧（PC）
+ *
+ * 対象要素: 歩道・歩行者用通路（way）/ 縁石・音声案内信号・振動案内信号（node）。
+ * 名称は name タグがなければ barrierFreeLabel（タグから生成した表示名）を表示する。
+ * フィルタは名称・要素種別のみに絞る（カテゴリ・公式サイト・属性欠落は対象外）。
+ */
+function BarrierFreeResultsList() {
+  const { state, dispatch } = useApp()
+  const { results, resultFilters, fetchMeta, searchSource, selectedMunicipality } = state
+
+  // バリアフリー要素には意味のないフィルタ（公式サイト・属性欠落）は適用しない
+  const bfFilters = { ...resultFilters, websiteOnly: false, missingFilter: 'none' }
+  const displayResults = useMemo(
+    () => applyResultFilters(results || [], bfFilters),
+    [results, resultFilters]
+  )
+
+  const update = (patch) => dispatch({ type: 'SET_RESULT_FILTERS', payload: patch })
+  const clear = () => dispatch({
+    type: 'SET_RESULT_FILTERS',
+    payload: { nameFilter: '', typeFilter: 'all', sortDir: 'none' }
+  })
+
+  const total = (results || []).length
+  const hasResults = total > 0
+  const narrowing = displayResults.length < total
+  const fmt = (n) => (n ?? 0).toLocaleString('ja-JP')
+
+  return (
+    <aside className="bg-white rounded-lg border border-slate-200 flex flex-col max-h-[640px] min-w-0">
+      <div className="p-4 border-b border-slate-200">
+        <div className="text-sm text-slate-600">
+          <span className="text-primary-600 font-semibold">
+            {narrowing
+              ? `全 ${fmt(total)} 件中、${fmt(displayResults.length)} 件を表示中`
+              : `全 ${fmt(total)} 件が見つかりました`}
+          </span>
+          <span className="ml-1 text-xs text-slate-400">（バリアフリー: 歩道・縁石・案内信号）</span>
+          {searchSource === 'municipality' && selectedMunicipality?.name && (
+            <span className="ml-1 text-xs text-slate-500">（{selectedMunicipality.name} とその周辺）</span>
+          )}
+        </div>
+        {fetchMeta && (
+          <div className="mt-1 text-xs text-slate-500">取得: {Math.round(fetchMeta.elapsedMs)}ms</div>
+        )}
+
+        <div className="mt-3 flex gap-2">
+          <input
+            value={resultFilters.nameFilter}
+            onChange={(e) => update({ nameFilter: e.target.value })}
+            placeholder="名称で絞る（任意）"
+            className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            aria-label="名称で絞る"
+          />
+          <select
+            value={resultFilters.typeFilter}
+            onChange={(e) => update({ typeFilter: e.target.value })}
+            className="px-2 py-1.5 text-sm border border-slate-300 rounded-md bg-white"
+            aria-label="要素種別で絞る"
+          >
+            <option value="all">すべて</option>
+            <option value="way">線 (way)</option>
+            <option value="node">点 (node)</option>
+          </select>
+          <button onClick={clear} className="text-xs text-slate-500 hover:text-primary-600 shrink-0">クリア</button>
+        </div>
+        <p className="mt-2 text-xs text-slate-400">
+          OpenStreetMapに登録済みのデータのみ。点字ブロックは登録情報（tactile_paving）を表示します。
+        </p>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500">
+            <tr>
+              <th className="px-2 py-2 text-left">#</th>
+              <th className="px-2 py-2 text-left">タイプ</th>
+              <th className="px-2 py-2 text-left">名称</th>
+              <th className="px-2 py-2 text-left">点字ブロック</th>
+              <th className="px-2 py-2 text-left">長さ</th>
+              <th className="px-2 py-2 text-left">案内</th>
+              <th className="px-2 py-2 text-left">OSM ID</th>
+              <th className="px-2 py-2 text-left">編集</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayResults.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-3 py-8 text-center text-slate-400">
+                  {hasResults
+                    ? '条件に一致する要素はありません。フィルタを緩めてみてください。'
+                    : 'この地域ではバリアフリー関連の登録がありません。iDエディタで追加できます。'}
+                </td>
+              </tr>
+            ) : displayResults.map((r, i) => {
+              const tactile = tactileStatus(r)
+              const length = lengthLabel(r)
+              const signals = signalLabels(r)
+              return (
+                <tr key={`${r.type}/${r.id}`} className="border-b border-slate-100 align-top">
+                  <td className="px-2 py-2 text-slate-400">{i + 1}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    <span className="inline-flex items-center rounded-full bg-sky-50 text-sky-700 px-2 py-0.5 text-xs">
+                      {barrierFreeTypeLabel(r)}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 font-medium text-slate-800">
+                    {r.name || barrierFreeLabel(r)}
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap">{tactileBadge(tactile)}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    {length || <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    {signals.length > 0
+                      ? <span className="text-amber-700">{signals.join('・')}</span>
+                      : <span className="text-slate-300">—</span>}
+                  </td>
+                  <td className="px-2 py-2 font-mono text-[11px] text-slate-500 whitespace-nowrap">{r.osmId}</td>
+                  <td className="px-2 py-2 whitespace-nowrap">
+                    <a
+                      href={buildIdElementUrl(r)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 hover:underline"
+                      title="iDエディタで編集（OSMアカウント必要）"
+                    >
+                      ✏️ iD
+                    </a>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </aside>
+  )
+}
+
+/** 点字ブロック状態のバッジ（有=緑 / 無=赤 / 未登録=—） */
+function tactileBadge(status) {
+  if (status === '有') {
+    return <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-xs">有</span>
+  }
+  if (status === '無') {
+    return <span className="inline-flex items-center rounded-full bg-rose-50 text-rose-600 px-2 py-0.5 text-xs">無</span>
+  }
+  return <span className="text-slate-300 text-xs">—</span>
 }
 
 export default ResultsPanel

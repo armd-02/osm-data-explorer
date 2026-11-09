@@ -162,7 +162,7 @@ export function buildAdvancedQuery(bbox, tags, keyword, useAnd) {
   const filters = tags
     .map((tag) => {
       if (!tag.key) return null
-      const safeKey = escapeStr(tag.key)
+      const safeKey = quoteKey(tag.key)
       if (tag.mode === 'equals') return `${safeKey}=${quoteValue(tag.value || '')}`
       if (tag.mode === 'exists') return safeKey
       if (tag.mode === 'not_exists') return `!${safeKey}`
@@ -219,6 +219,19 @@ function buildFilterBody(bboxStr, catFilter, extraAnd = []) {
  */
 function escapeStr(str) {
   return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+/**
+ * (#62) フィルタのキー部分を生成する。
+ * 無クォートのキーは単純な文字（英数字・アンダースコア・ドット・ハイフン）のみで
+ * 使える。コロンを含むキー（addr:housenumber、name:ja、traffic_signals:sound 等）は
+ * ダブルクォートで囲む必要がある。囲まない場合、Overpassパーサが
+ * `':' found` という parse error を返す（実測 HTTP 400）。
+ */
+function quoteKey(key) {
+  const s = String(key)
+  if (/^[A-Za-z0-9_.-]+$/.test(s)) return s
+  return `"${escapeStr(s)}"`
 }
 
 /**
@@ -318,7 +331,9 @@ async function attemptQuery(url, query, controller) {
  * 記録し、成功時は meta.attempts、全失敗時はエラーの error.attempts として返す。
  * 生のクエリ文字列は含めない（個人情報・大量データ対策）。
  * @param {string} query - Overpass QLクエリ
- * @param {object} options - { endpoint, timeout(=totalTimeout), perAttemptTimeout, signal }
+ * @param {object} options - { endpoint, timeout(=totalTimeout), perAttemptTimeout, signal, parse }
+ *   parse: 応答JSONを結果配列に変換するパーサー（#62）。デフォルトは parseOverpassResponse（施設系）。
+ *   バリアフリー検索では parseBarrierFreeResponse を渡す。
  * @returns {Promise<{results: Array, meta: object}>}
  */
 export async function executeOverpassQuery(query, options = {}) {
@@ -327,7 +342,8 @@ export async function executeOverpassQuery(query, options = {}) {
     timeout,
     totalTimeout = timeout ?? APP_CONFIG.totalTimeoutMs,
     perAttemptTimeout = APP_CONFIG.perAttemptTimeoutMs,
-    signal: externalSignal
+    signal: externalSignal,
+    parse = parseOverpassResponse
   } = options
 
   // 試行チェーン: 一次エンドポイント + フォールバック順（重複除去）
@@ -387,7 +403,7 @@ export async function executeOverpassQuery(query, options = {}) {
     try {
       const data = await attemptQuery(url, query, controller)
 
-      const results = parseOverpassResponse(data)
+      const results = parse(data)
       const meta = {
         fetchedAt: new Date().toISOString(),
         endpoint: getEndpointLabel(ep),

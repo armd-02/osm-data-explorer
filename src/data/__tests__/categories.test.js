@@ -6,6 +6,7 @@ import {
   getCategoryById,
   getGroupedCategories,
   categoryToQueryFilter,
+  categoryToReadableTags,
   isFoodCategory,
   getCategoriesForPurpose,
   getPurposeOfCategory,
@@ -14,12 +15,12 @@ import {
 } from '../../data/categories'
 
 describe('カテゴリの目的ベースグループ化（#44 生活者目線UI）', () => {
-  it('6つの目的グループ（食べる・買う・遊ぶ・暮らす・学ぶ・その他）を返し、計23カテゴリを含む', () => {
+  it('7つの目的グループ（食べる・買う・遊ぶ・暮らす・学ぶ・その他・バリアフリー）を返し、計24カテゴリを含む', () => {
     const grouped = getGroupedCategories()
-    expect(grouped.length).toBe(6)
-    expect(grouped.map((g) => g.group)).toEqual(['食べる', '買う', '遊ぶ', '暮らす', '学ぶ', 'その他'])
+    expect(grouped.length).toBe(7)
+    expect(grouped.map((g) => g.group)).toEqual(['食べる', '買う', '遊ぶ', '暮らす', '学ぶ', 'その他', 'バリアフリー'])
     const total = grouped.reduce((n, g) => n + g.categories.length, 0)
-    expect(total).toBe(23)
+    expect(total).toBe(24)
   })
 
   it('(#44) 学ぶグループに教育施設のサブカテゴリ（幼稚園・小学校・大学・予備校・学校）を含む', () => {
@@ -108,6 +109,8 @@ describe('カテゴリの目的ベースグループ化（#44 生活者目線UI�
     expect(eat.map((c) => c.id)).toEqual(['food_drink', 'cafe', 'restaurant', 'fast_food', 'bar_izakaya'])
     const live = getCategoriesForPurpose('暮らす')
     expect(live.map((c) => c.id)).toEqual(['public_facility', 'hospital', 'pharmacy', 'bank', 'toilets'])
+    const bf = getCategoriesForPurpose('バリアフリー')
+    expect(bf.map((c) => c.id)).toEqual(['barrier_free'])
     expect(getCategoriesForPurpose('存在しない目的')).toBeNull()
   })
 
@@ -122,6 +125,7 @@ describe('カテゴリの目的ベースグループ化（#44 生活者目線UI�
     expect(getPurposeOfCategory('university')).toBe('学ぶ')
     expect(getPurposeOfCategory('prep_school')).toBe('学ぶ')
     expect(getPurposeOfCategory('transport')).toBe('その他')
+    expect(getPurposeOfCategory('barrier_free')).toBe('バリアフリー')
     expect(getPurposeOfCategory('ramen')).toBeNull()
   })
 
@@ -153,6 +157,48 @@ describe('#44 目的スコープ検索（getPurposeUnionFilters / getPurposeLabe
 
   it('getPurposeLabelList: グループ内カテゴリラベルを「・」区切りで返す', () => {
     expect(getPurposeLabelList('遊ぶ')).toBe('公園・広場・スポーツ施設・美術館・博物館・寺院・神社・宿泊施設')
+    expect(getPurposeLabelList('暮らす')).toBe('公共施設・病院・クリニック・薬局・ドラッグストア・銀行・ATM・トイレ')
+    expect(getPurposeLabelList('バリアフリー')).toBe('バリアフリー')
     expect(getPurposeLabelList('存在しない目的')).toBe('')
+  })
+
+  it('getPurposeUnionFilters: 「バリアフリー」は空フィルタ（クエリ組み込みは後続ピース）', () => {
+    const filters = getPurposeUnionFilters('バリアフリー')
+    expect(filters).toEqual([])
+  })
+
+  it('getPurposeUnionFilters: 他の目的グループに barrier_free フィルタが混入しない', () => {
+    for (const name of ['食べる', '買う', '遊ぶ', '暮らす', '学ぶ', 'その他']) {
+      const filters = getPurposeUnionFilters(name)
+      for (const f of filters) {
+        expect(f).not.toContain('footway')
+        expect(f).not.toContain('kerb')
+        expect(f).not.toContain('traffic_signals')
+      }
+    }
+  })
+})
+
+describe('バリアフリーカテゴリ（#62）', () => {
+  it('barrier_freeカテゴリがCATEGORIESに存在し、getCategoryByIdで取得できる', () => {
+    const cat = getCategoryById('barrier_free')
+    expect(cat).toBeTruthy()
+    expect(cat.label).toBe('バリアフリー')
+    expect(cat.logic).toBe('or')
+    expect(cat.tags).toEqual([])
+    expect(cat.description).toContain('歩道')
+    expect(cat.description).toContain('縁石')
+    expect(cat.description).toContain('音声案内')
+  })
+
+  it('categoryToQueryFilter: 空tagsで空フィルタを返す（クエリ組み込みは後続ピース）', () => {
+    const f = categoryToQueryFilter(getCategoryById('barrier_free'))
+    expect(f.unionFilters).toEqual([])
+    expect(f.andFilters).toEqual([])
+  })
+
+  it('categoryToReadableTags: 空tagsで空文字列を返す（施設タグ風の表示にならない）', () => {
+    const readable = categoryToReadableTags(getCategoryById('barrier_free'))
+    expect(readable).toBe('')
   })
 })

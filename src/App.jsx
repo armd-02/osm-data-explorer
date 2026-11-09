@@ -129,22 +129,16 @@ function App() {
 
 /**
  * 施設検索タブの内容
- * 検索条件（上部）と 一覧・地図（下部）を上下に分割。
- * - 縦リサイズ: 検索条件と一覧・地図領域の比率（topPct）
- * - 横リサイズ: 一覧と地図領域の比率（splitPct）— 地図表示時のみ
- * - 折りたたみ: 検索条件をヘッダー行のみに表示
+ * 縦に流れるスクロールレイアウト（スマホと同じ考え方）: 画面全体が1つの縦スクロール列。
+ * ブロック順: StatusBanner → EditPanel → 検索条件 → 結果一覧 → 地図 → ExportBar
+ * - 検索条件: 折りたたみ式（ヘッダー行 ⇄ フォーム表示）、展開時は自然の高さ。幅いっぱいの行
+ * - 結果一覧+地図: 幅1280px以上（xl）で2列グリッド（並列）、未満では1列で縦積み
+ * - 結果一覧: 高さ上限640px・内部スクロール（ResultsPanel内で設定。ページが際限なく長くなるのを防ぐ）
+ * - 地図: 高さ520px固定のブロック（flexで残り高さを埋める方式は廃止。隠す/表示する切替あり）
  */
 function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setShowMap }) {
   const { state } = useApp()
   const { search, cancel } = useSearch()
-  const [topPct, setTopPct] = useState(35) // 上下分割比率（検索条件の割合）
-  const [splitPct, setSplitPct] = useState(55) // 左右分割比率（一覧の割合）
-  const workspaceRef = useRef(null) // ワークスペース全体ref
-  const splitRef = useRef(null)     // 左右分割コンテナref
-  const draggingVRef = useRef(false)
-  const draggingHRef = useRef(false)
-  const vCleanupRef = useRef(null)
-  const hCleanupRef = useRef(null)
 
   // (回帰) 地図ロード完了までgetMapInstance()はnull。
   // ページを開いた直後は初回レンダリング時点でnullのため、
@@ -189,103 +183,16 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
   // 現在の検索条件スナップショット（ボタンのdisable判定・理由表示用）
   const criteria = makeCriteria()
 
-  // 縦リサイズハンドル（Pointer Eventsでマウス/タッチ/ペン対応）
-  const handleVResizeStart = React.useCallback((e) => {
-    e.preventDefault()
-    draggingVRef.current = true
-    const workspace = workspaceRef.current
-    if (!workspace) return
-
-    if (vCleanupRef.current) { vCleanupRef.current(); vCleanupRef.current = null }
-
-    const onMove = (ev) => {
-      if (!draggingVRef.current) return
-      const rect = workspace.getBoundingClientRect()
-      let pct = ((ev.clientY - rect.top) / rect.height) * 100
-      // 最小高さ制限: 上部≥15%, 下部≥40%
-      pct = Math.max(15, Math.min(60, pct))
-      setTopPct(pct)
-    }
-
-    const onUp = () => {
-      cleanup()
-      // MapLibreサイズ再調整（最終）
-      const map = getMapInstance()
-      if (map && typeof map.resize === 'function') map.resize()
-    }
-
-    const cleanup = () => {
-      draggingVRef.current = false
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-      document.removeEventListener('pointercancel', onUp)
-      if (vCleanupRef.current === cleanup) vCleanupRef.current = null
-    }
-
-    vCleanupRef.current = cleanup
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-    document.addEventListener('pointercancel', onUp)
-  }, [])
-
-  // 横リサイズハンドル
-  const handleHResizeStart = React.useCallback((e) => {
-    e.preventDefault()
-    draggingHRef.current = true
-    const split = splitRef.current
-    if (!split) return
-
-    if (hCleanupRef.current) { hCleanupRef.current(); hCleanupRef.current = null }
-
-    const onMove = (ev) => {
-      if (!draggingHRef.current) return
-      const rect = split.getBoundingClientRect()
-      let pct = ((ev.clientX - rect.left) / rect.width) * 100
-      // 最小幅制限: 一覧≥25%, 地図≥25%
-      pct = Math.max(25, Math.min(75, pct))
-      setSplitPct(pct)
-    }
-
-    const onUp = () => {
-      cleanup()
-      // MapLibreサイズ再調整（最終）
-      const map = getMapInstance()
-      if (map && typeof map.resize === 'function') map.resize()
-    }
-
-    const cleanup = () => {
-      draggingHRef.current = false
-      document.removeEventListener('pointermove', onMove)
-      document.removeEventListener('pointerup', onUp)
-      document.removeEventListener('pointercancel', onUp)
-      if (hCleanupRef.current === cleanup) hCleanupRef.current = null
-    }
-
-    hCleanupRef.current = cleanup
-    document.addEventListener('pointermove', onMove)
-    document.addEventListener('pointerup', onUp)
-    document.addEventListener('pointercancel', onUp)
-  }, [])
-
-  // アンマウント時のイベント解除
-  useEffect(() => {
-    return () => {
-      if (vCleanupRef.current) { vCleanupRef.current(); vCleanupRef.current = null }
-      if (hCleanupRef.current) { hCleanupRef.current(); hCleanupRef.current = null }
-    }
-  }, [])
-
   return (
-    <div ref={workspaceRef} className="search-workspace flex flex-col flex-1 min-h-0">
+    <div className="search-workspace flex-1 min-h-0 overflow-y-auto space-y-3">
       <StatusBanner />
       <EditPanel />
 
-      {/* 検索条件（折りたたみ可 + 縦リサイズ） */}
+      {/* 検索条件（折りたたみ可・展開時は自然高さ） */}
       <div
-        className={`shrink-0 border-b border-slate-200 bg-white overflow-hidden ${
+        className={`border border-slate-200 rounded-lg bg-white mx-3 ${
           searchCollapsed ? 'py-1' : ''
         }`}
-        style={!searchCollapsed ? { height: `${topPct}%` } : undefined}
       >
         <div className="flex items-center gap-2 px-3">
           <button
@@ -313,27 +220,20 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
           </div>
         </div>
         {!searchCollapsed && (
-          <div className="px-3 mt-1 overflow-y-auto h-[calc(100%-28px)]">
+          <div className="mt-1">
             <SearchPanel />
           </div>
         )}
       </div>
 
-      {/* 一覧 + 地図（横リサイズで比率調整） */}
-      {showMap ? (
-        <div ref={splitRef} className="search-split flex flex-1 min-h-0 relative">
-          <div className="min-w-0 overflow-hidden" style={{ width: `${splitPct}%` }}>
-            <ResultsPanel />
-          </div>
-          <div
-            className="w-4 cursor-col-resize bg-slate-200 hover:bg-primary-300 active:bg-primary-400 transition-colors flex items-center justify-center shrink-0 touch-none"
-            onPointerDown={handleHResizeStart}
-            title="左右にドラッグして一覧と地図領域の幅を調整"
-          >
-            <div className="h-16 w-1 rounded-full bg-slate-400" />
-          </div>
-          <div className="flex-1 min-w-0 flex flex-col">
-            <div className="h-8 bg-slate-100 border-l border-slate-200 flex items-center px-2 shrink-0">
+      {/* 結果一覧 + 地図（1280px以上で2列、未満で縦積み） */}
+      <div className="mx-3 grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <ResultsPanel />
+
+        {/* 地図（固定高さのブロック） */}
+        {showMap ? (
+          <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+            <div className="h-8 bg-slate-100 border-b border-slate-200 flex items-center px-2">
               <span className="text-[10px] text-slate-500">地図表示</span>
               <button
                 onClick={() => setShowMap(false)}
@@ -342,21 +242,22 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
                 地図を隠す
               </button>
             </div>
-            <div className="flex-1 min-h-0 relative">
+            {/* 地図本体: 高さ520px固定（flexでの残り高さ埋めは使わない） */}
+            <div className="search-split relative h-[520px]">
               <MapView />
             </div>
           </div>
-        </div>
-      ) : (
-        <div className="flex-1 min-h-0 flex items-start justify-center p-4 bg-slate-50">
-          <button
-            onClick={() => setShowMap(true)}
-            className="text-xs text-slate-500 hover:text-primary-600 border border-slate-300 rounded px-3 py-1.5 bg-white"
-          >
-            地図を表示
-          </button>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center justify-center p-4 bg-slate-50 border border-dashed border-slate-300 rounded-lg">
+            <button
+              onClick={() => setShowMap(true)}
+              className="text-xs text-slate-500 hover:text-primary-600 border border-slate-300 rounded px-3 py-1.5 bg-white"
+            >
+              地図を表示
+            </button>
+          </div>
+        )}
+      </div>
 
       <ExportBar />
     </div>

@@ -336,3 +336,118 @@ describe('ResultsPanel: 旧CSV照合部品は除去済み', () => {
     expect(screen.queryByText('照合に使う列を選択してください（複数可）')).toBeNull()
   })
 })
+
+// ===== (#62) バリアフリー検索結果 =====
+// parseBarrierFreeResponse の出力（共通結果形状 + osmId/bf）と同じ形状
+const bfFootway = {
+  type: 'way',
+  id: 100,
+  name: '中央通り歩道',
+  lat: 34.003333,
+  lon: 135.01,
+  tags: { highway: 'footway', tactile_paving: 'yes', name: '中央通り歩道' },
+  osmId: 'way/100',
+  bf: { kind: 'way', tactile: 'yes', lengthM: 152, kerb: null, hasSound: false, hasVibration: false, geometry: [[135.0, 34.0], [135.01, 34.01], [135.02, 34.0]] }
+}
+const bfKerb = {
+  type: 'node',
+  id: 200,
+  name: null,
+  lat: 34.1,
+  lon: 135.1,
+  tags: { barrier: 'kerb' },
+  osmId: 'node/200',
+  bf: { kind: 'node', tactile: null, lengthM: null, kerb: null, hasSound: false, hasVibration: false, geometry: [135.1, 34.1] }
+}
+const bfSound = {
+  type: 'node',
+  id: 300,
+  name: null,
+  lat: 34.2,
+  lon: 34.2 - 0.1,
+  tags: { 'traffic_signals:sound': 'yes' },
+  osmId: 'node/300',
+  bf: { kind: 'node', tactile: null, lengthM: null, kerb: null, hasSound: true, hasVibration: false, geometry: [135.2, 34.2] }
+}
+const BF_RESULTS = [bfFootway, bfKerb, bfSound]
+
+function bfActions(results = BF_RESULTS) {
+  return [
+    { type: 'SET_RESULTS', payload: results },
+    { type: 'SET_RESULT_KIND', payload: 'barrier_free' }
+  ]
+}
+
+describe('ResultsPanel: バリアフリー検索結果 (#62)', () => {
+  it('バリアフリー専用一覧（タイプ・点字ブロック・長さ・案内・OSM ID）を表示する', () => {
+    render(<Harness preActions={bfActions()} />)
+
+    // ヘッダ: 件数 + バリアフリー明示
+    expect(screen.getByText(/全 3 件が見つかりました/)).toBeTruthy()
+    expect(screen.getByText(/バリアフリー: 歩道・縁石・案内信号/)).toBeTruthy()
+
+    // 各行の表示
+    expect(screen.getByText('歩道')).toBeTruthy()
+    expect(screen.getByText('中央通り歩道')).toBeTruthy()
+    expect(screen.getByText('縁石')).toBeTruthy()
+    // 名称が無い要素は barrierFreeLabel の表示名を名称欄に表示する（#62 仕様4）
+    expect(screen.getByText('縁石（未記録）')).toBeTruthy()
+    // 音声案内信号ノード: タイプ欄と名称欄の両方に同一ラベルが出る
+    expect(screen.getAllByText('音声案内信号')).toHaveLength(2)
+    expect(screen.getByText('有')).toBeTruthy()          // 点字ブロック
+    expect(screen.getByText('152 m')).toBeTruthy()       // 長さ
+    expect(screen.getByText('音声')).toBeTruthy()        // 案内
+    expect(screen.getByText('way/100')).toBeTruthy()     // OSM ID
+    expect(screen.getByText('node/200')).toBeTruthy()
+  })
+
+  it('iD編集リンクは要素ディープリンクを生成する', () => {
+    render(<Harness preActions={bfActions()} />)
+    const links = screen.getAllByRole('link', { name: /iD/ })
+    expect(links.length).toBe(3)
+    const hrefs = links.map((a) => a.getAttribute('href'))
+    expect(hrefs).toContain('https://www.openstreetmap.org/edit?node=way%2F100')
+    expect(hrefs).toContain('https://www.openstreetmap.org/edit?node=node%2F200')
+  })
+
+  it('施設向けのコントロール（カテゴリ選択・公式サイト）は表示しない', () => {
+    render(<Harness preActions={bfActions()} />)
+    expect(screen.queryByRole('combobox', { name: '施設の種類で絞る' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: '属性の欠落で絞る' })).toBeNull()
+    expect(screen.queryByText('公式サイトがあるものだけ')).toBeNull()
+  })
+
+  it('要素種別フィルタで node のみを選択すると way が消える', () => {
+    render(<Harness preActions={bfActions()} />)
+    expect(screen.getByText('中央通り歩道')).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('combobox', { name: '要素種別で絞る' }), { target: { value: 'node' } })
+
+    expect(screen.queryByText('中央通り歩道')).toBeNull()
+    expect(screen.getByText('縁石')).toBeTruthy()
+    expect(screen.getAllByText('音声案内信号')).toHaveLength(2)
+  })
+
+  it('名称フィルタで一致する行だけを残す', () => {
+    render(<Harness preActions={bfActions()} />)
+    fireEvent.change(screen.getByRole('textbox', { name: '名称で絞る' }), { target: { value: '中央通り' } })
+    expect(screen.getByText('中央通り歩道')).toBeTruthy()
+    expect(screen.queryByText('縁石')).toBeNull()
+    expect(screen.getByText(/全 3 件中、1 件を表示中/)).toBeTruthy()
+  })
+
+  it('クリアで表示フィルタがリセットされる', () => {
+    const log = []
+    render(<Harness preActions={bfActions()} log={log} />)
+    fireEvent.change(screen.getByRole('textbox', { name: '名称で絞る' }), { target: { value: '中央通り' } })
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }))
+    expect(screen.getByText('縁石')).toBeTruthy()
+    expect(screen.getByText(/全 3 件が見つかりました/)).toBeTruthy()
+    expect(log.some((a) => a.type === 'SET_RESULT_FILTERS' && a.payload.nameFilter === '')).toBe(true)
+  })
+
+  it('0件時はバリアフリー向けのメッセージを表示する', () => {
+    render(<Harness preActions={bfActions([])} />)
+    expect(screen.getByText(/バリアフリー関連の登録がありません/)).toBeTruthy()
+  })
+})

@@ -132,10 +132,29 @@ describe('buildAdvancedQuery', () => {
     assertValidOverpassQL(query)
   })
 
-  it('コロン含むキー: 安全にエスケープ', () => {
+  it('コロン含むキー: ダブルクォートで囲む（equals）', () => {
+    // (#62) 無クォートのコロンキーはOverpassパーサで `':' found` エラーになるため、
+    // 特殊文字を含むキーはダブルクォートで囲む
     const tags = [{ key: 'addr:street', value: '十三1-1', mode: 'equals' }]
     const { query } = buildAdvancedQuery(BBOX, tags, '', true)
-    expect(query).toContain(`node[addr:street=十三1-1](${BBOX_STR})`)
+    expect(query).toContain(`node["addr:street"=十三1-1](${BBOX_STR})`)
+    expect(query).not.toContain('node[addr:street')
+    assertValidOverpassQL(query)
+  })
+
+  it('コロン含むキー: ダブルクォートで囲む（exists / not_exists）', () => {
+    const { query: qExists } = buildAdvancedQuery(BBOX, [{ key: 'traffic_signals:sound', mode: 'exists' }], '', true)
+    expect(qExists).toContain(`node["traffic_signals:sound"](${BBOX_STR})`)
+    const { query: qNot } = buildAdvancedQuery(BBOX, [{ key: 'addr:street', mode: 'not_exists' }], '', true)
+    expect(qNot).toContain(`node[!"addr:street"](${BBOX_STR})`)
+    assertValidOverpassQL(qExists)
+    assertValidOverpassQL(qNot)
+  })
+
+  it('コロンを含まないキー: 従来どおりクォートなし', () => {
+    const { query } = buildAdvancedQuery(BBOX, [{ key: 'amenity', value: 'cafe', mode: 'equals' }], '', true)
+    expect(query).toContain(`node[amenity=cafe](${BBOX_STR})`)
+    expect(query).not.toContain('node["amenity"')
     assertValidOverpassQL(query)
   })
 

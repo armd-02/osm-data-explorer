@@ -224,6 +224,13 @@ export const CATEGORIES = [
     description: 'スポーツセンター・プール・球場・コート'
   },
   {
+    id: 'barrier_free',
+    label: 'バリアフリー',
+    tags: [],
+    logic: 'or',
+    description: 'バリアフリー関連のインフラ（歩道・縁石・音声案内信号）'
+  },
+  {
     id: 'museum',
     label: '美術館・博物館',
     tags: [{ key: 'tourism', values: ['museum', 'art_gallery', 'viewpoint'] }],
@@ -267,7 +274,8 @@ export const CATEGORY_GROUPS = [
   { name: '遊ぶ', icon: '🎠', ids: ['park', 'sports', 'museum', 'worship', 'accommodation'] },
   { name: '暮らす', icon: '🏠', ids: ['public_facility', 'hospital', 'pharmacy', 'bank', 'toilets'] },
   { name: '学ぶ', icon: '📚', ids: ['kindergarten', 'primary_school', 'university', 'prep_school', 'school'] },
-  { name: 'その他', icon: '🧭', ids: ['transport'] }
+  { name: 'その他', icon: '🧭', ids: ['transport'] },
+  { name: 'バリアフリー', icon: '♿', ids: ['barrier_free'] }
 ]
 
 /**

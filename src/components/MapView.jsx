@@ -7,6 +7,9 @@ import MapToolbar from './MapToolbar'
 import { OSM_RASTER_STYLE } from '../utils/mapStyle'
 import { wheelchairBadge } from '../utils/accessibility'
 import { buildOsmElementUrl, buildIdElementUrl } from '../utils/editLinks'
+import { barrierFreeToMapGeoJSON, TACTILE_LINE_COLORS, NODE_ROLE_COLORS } from '../utils/barrierFreeGeoJSON'
+import { barrierFreeLabel } from '../utils/barrierFree'
+import BarrierFreeLegend from './BarrierFreeLegend'
 
 // Default center: Osaka, Japan（MapLibreは[経度, 緯度]順）
 const DEFAULT_CENTER = [135.5023, 34.6937]
@@ -17,6 +20,16 @@ const RESULTS_SOURCE = 'results'
 const POINT_LAYER = 'point-circle'
 const CLUSTERS_LAYER = 'clusters'
 const CLUSTER_COUNT_LAYER = 'cluster-count'
+
+// (#62) バリアフリー結果用のソース・レイヤID（第4ピース）
+// 既存のクラスタリングソース（cluster: true）は点のみをクラスタするため、
+// way の線描画には別途 cluster 無効のソースを使う。
+const BF_SOURCE = 'barrier-free'
+const BF_LINE_LAYER = 'bf-line'
+const BF_NODE_LAYER = 'bf-node'
+
+// 空のFeatureCollection（ソースのデータクリア用。共有して再利用する）
+const EMPTY_FC = { type: 'FeatureCollection', features: [] }
 
 // (Task 1) 既存の「500件上限」をネイティブクラスタリングに置き換え。
 // superclusterベースのクラスタは全件を扱えるため上限・警告バナーは不要。
@@ -69,6 +82,43 @@ export const CLUSTER_COUNT_LAYER_DEF = {
   },
   paint: {
     'text-color': '#ffffff'
+  }
+}
+
+// (#62) バリアフリー結果のレイヤ定義（第4ピース）。
+// 色は barrierFreeGeoJSON.js の定数を使う（凡例 BarrierFreeLegend と同一）。
+// - bf-line: way を線描画。色は点字ブロックの登録状態（tactile）で分ける。
+//   way の近似中心点（頂点平均）はマーカーとしては描画しない。
+// - bf-node: node を点描画。色は役割（role: signal / kerb / kerb+signal）で分ける。
+export const BF_LINE_LAYER_DEF = {
+  id: BF_LINE_LAYER,
+  type: 'line',
+  source: BF_SOURCE,
+  filter: ['==', ['get', 'kind'], 'way'],
+  paint: {
+    'line-color': ['match', ['get', 'tactile'],
+      'yes', TACTILE_LINE_COLORS.yes,
+      'no', TACTILE_LINE_COLORS.no,
+      TACTILE_LINE_COLORS.unknown],
+    'line-width': 4,
+    'line-opacity': 0.9
+  }
+}
+
+export const BF_NODE_LAYER_DEF = {
+  id: BF_NODE_LAYER,
+  type: 'circle',
+  source: BF_SOURCE,
+  filter: ['==', ['get', 'kind'], 'node'],
+  paint: {
+    'circle-radius': 6,
+    'circle-color': ['match', ['get', 'role'],
+      'signal', NODE_ROLE_COLORS.signal,
+      'kerb', NODE_ROLE_COLORS.kerb,
+      'kerb+signal', NODE_ROLE_COLORS['kerb+signal'],
+      NODE_ROLE_COLORS.other],
+    'circle-stroke-width': 2,
+    'circle-stroke-color': '#ffffff'
   }
 }
 
@@ -132,12 +182,15 @@ function buildPopupElement(result) {
 
 /**
  * 検索結果をクラスタリング用GeoJSONに変換する
+ * (#62 第4ピース) bf 付きの項目（バリアフリー結果）は除外する:
+ * 歩道ウェイの近似中心点が青い点として表示されるのを防ぐため。
+ * 施設検索（bf なし）の表示は従来どおり。
  */
 function resultsToGeoJSON(results) {
   return {
     type: 'FeatureCollection',
     features: (Array.isArray(results) ? results : [])
-      .filter((r) => r.lat != null && r.lon != null)
+      .filter((r) => !r.bf && r.lat != null && r.lon != null)
       .map((r) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
@@ -174,7 +227,7 @@ function MapView({ onMarkerClick = null }) {
   const hasFitInitialBboxRef = useRef(false)
   // (#60) アクティブ結果のハイライトマーカー
   const { state } = useApp()
-  const { results, activeResultId } = state
+  const { results, activeResultId, resultKind } = state
 
   // (#47) 最新のstateを常に読むためのref（イベントハンドラで旧stateを防ぐ）
   const stateRef = useRef(state)
@@ -188,15 +241,30 @@ function MapView({ onMarkerClick = null }) {
   const activeResultIdRef = useRef(activeResultId)
   useEffect(() => { activeResultIdRef.current = activeResultId })
 
-  const syncResults = () => {
+  // (#62) 結果データの地図反映（第4ピース）。
+  // 注: maplibre-glのMapにはMap.setGeoJSON()がない（mapbox-gl由来のAPI）。
+  // 正しいAPIは getSource(id).setData(geojson) である。
+  // バリアフリー検索（resultKind='barrier_free'）の結果は専用ソース
+  // （'barrier-free'、線+点）へ、POI検索の結果は既存のクラスタリングソース
+  // （'results'）へ反映する。切り替わりで片側のデータを空にする。
+  // setDataの順序は「先に旧データをクリア→後に新データを設定」とし、
+  // 最終 setData が現在の表示対象になるようにする（モックの_lastGeoJSON参照用）。
+  const syncData = () => {
     const map = mapInstanceRef.current
-    if (!map || !loadedRef.current) return false
-    // 注: maplibre-glのMapにはMap.setGeoJSON()がない（mapbox-gl由来のAPI）。
-    // 正しいAPIは getSource(id).setData(geojson) である。
-    const source = map.getSource(RESULTS_SOURCE)
-    if (!source) return false
-    source.setData(resultsToGeoJSON(resultsRef.current))
-    return true
+    if (!map || !loadedRef.current) return
+    const s = stateRef.current
+    const isBf = s.resultKind === 'barrier_free'
+    const resultsSource = map.getSource(RESULTS_SOURCE)
+
+    if (isBf) {
+      setupBfLayers(map)
+      if (resultsSource) resultsSource.setData(EMPTY_FC)
+      const bfSource = map.getSource(BF_SOURCE)
+      if (bfSource) bfSource.setData(barrierFreeToMapGeoJSON(s.results))
+    } else {
+      if (map.getSource(BF_SOURCE)) removeBfLayers(map)
+      if (resultsSource) resultsSource.setData(resultsToGeoJSON(s.results))
+    }
   }
 
   // (#60) アクティブ結果のハイライトマーカー管理
@@ -232,8 +300,14 @@ function MapView({ onMarkerClick = null }) {
     }
   }
 
-  // クリック・カーソルハンドラ（load後にレイヤが存在的になってから有効）
-  const setupInteractions = (map) => {
+  // 結果マーカー（点レイヤ）のクリック処理。
+  // POINT_LAYER（POI）と BF_NODE_LAYER（バリアフリーノード）で共有する。
+  const makeFeatureClickHandler = (map) => (e) => {
+    const key = e.features?.[0]?.properties?.key
+    if (!key) return
+    const result = stateRef.current.results.find((r) => `${r.type}/${r.id}` === key)
+    if (!result) return
+
     const closePopup = () => {
       if (popupRef.current) {
         popupRef.current.remove()
@@ -241,27 +315,29 @@ function MapView({ onMarkerClick = null }) {
       }
     }
 
-    map.on('click', POINT_LAYER, (e) => {
-      const key = e.features?.[0]?.properties?.key
-      if (!key) return
-      const result = stateRef.current.results.find((r) => `${r.type}/${r.id}` === key)
-      if (!result) return
-
-      // (#59) モバイル: マーカータップで施設詳細ボトムシートを開く（ポップアップ非表示）
-      if (onMarkerClickRef.current) {
-        closePopup()
-        onMarkerClickRef.current(result)
-        return
-      }
-
+    // (#59) モバイル: マーカータップで施設詳細ボトムシートを開く（ポップアップ非表示）
+    if (onMarkerClickRef.current) {
       closePopup()
-      // (#38) ポップアップ内容はDOMノード（textContent）のみ
-      const popup = new maplibregl.Popup({ offset: 10, closeButton: true })
-        .setLngLat(e.lngLat)
-        .setDOMElement(buildPopupElement(result))
-      popup.addTo(map)
-      popupRef.current = popup
-    })
+      onMarkerClickRef.current(result)
+      return
+    }
+
+    closePopup()
+    // (#38) ポップアップ内容はDOMノード（textContent）のみ
+    // (#62 第4ピース) バリアフリー項目は buildPopupElement を流用し、
+    // 表示名を barrierFreeLabel（例: 歩道・点字ブロックあり）に置き換える。
+    // OSMリンク・ID表示等はそのまま（最小限の表示）。
+    const popupData = result.bf ? { ...result, name: barrierFreeLabel(result) } : result
+    const popup = new maplibregl.Popup({ offset: 10, closeButton: true })
+      .setLngLat(e.lngLat)
+      .setDOMElement(buildPopupElement(popupData))
+    popup.addTo(map)
+    popupRef.current = popup
+  }
+
+  // クリック・カーソルハンドラ（load後にレイヤが存在的になってから有効）
+  const setupInteractions = (map) => {
+    map.on('click', POINT_LAYER, makeFeatureClickHandler(map))
 
     // クラスタクリック → メンバー範囲へ拡大（ユーザー操作によるfitは許可）
     map.on('click', CLUSTERS_LAYER, (e) => {
@@ -296,11 +372,44 @@ function MapView({ onMarkerClick = null }) {
     }
   }
 
+  // (#62) バリアフリー結果のソース・レイヤ setup（第4ピース）。
+  // getSource が存在すればスキップ（重複追加防止）。
+  const setupBfLayers = (map) => {
+    if (map.getSource(BF_SOURCE)) return
+    map.addSource(BF_SOURCE, {
+      type: 'geojson',
+      data: EMPTY_FC
+    })
+    map.addLayer(BF_LINE_LAYER_DEF)
+    map.addLayer(BF_NODE_LAYER_DEF)
+    // (#62 第4ピース) 線（way）と点（node）のクリックでポップアップを表示。
+    // ポイントレイヤ（POINT_LAYER）と同一のハンドラを共有する。
+    for (const layerId of [BF_LINE_LAYER, BF_NODE_LAYER]) {
+      map.on('click', layerId, makeFeatureClickHandler(map))
+      map.on('mouseenter', layerId, () => {
+        const canvas = map.getCanvas?.()
+        if (canvas) canvas.style.cursor = 'pointer'
+      })
+      map.on('mouseleave', layerId, () => {
+        const canvas = map.getCanvas?.()
+        if (canvas) canvas.style.cursor = ''
+      })
+    }
+  }
+
+  // (#62) バリアフリーレイヤの削除（POI検索へ切り返したとき）
+  const removeBfLayers = (map) => {
+    if (!map.getSource(BF_SOURCE)) return
+    map.removeLayer(BF_LINE_LAYER)
+    map.removeLayer(BF_NODE_LAYER)
+    map.removeSource(BF_SOURCE)
+  }
+
   const setupResultLayers = (map) => {
     if (map.getSource(RESULTS_SOURCE)) return
     map.addSource(RESULTS_SOURCE, {
       type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
+      data: EMPTY_FC,
       cluster: true,
       clusterRadius: CLUSTER_RADIUS,
       clusterMaxZoom: CLUSTER_MAX_ZOOM
@@ -354,7 +463,8 @@ function MapView({ onMarkerClick = null }) {
         hasFitInitialBboxRef.current = true
       }
 
-      syncResults()
+      // (#62) バリアフリー検索の結果なら専用ソース・レイヤもsetupして反映
+      syncData()
       syncHighlight()
     })
 
@@ -411,7 +521,8 @@ function MapView({ onMarkerClick = null }) {
     }
   }, [])
 
-  // 結果マーカー更新（クラスタリングGeoJSON）
+  // 結果マーカー更新（クラスタリングGeoJSON / バリアフリー線・点GeoJSON）
+  // (#62) resultKind にも従い、POI⇄バリアフリーのソース切り替えを行う。
   useEffect(() => {
     const map = mapInstanceRef.current
     if (!map || !loadedRef.current) return
@@ -422,10 +533,8 @@ function MapView({ onMarkerClick = null }) {
     }
     // (Task 11) maplibre-glにはMap.setGeoJSON()が存在しない（mapbox-glのAPI）ため、
     // 検索結果の反映は getSource().setData() で行う。
-    const source = map.getSource(RESULTS_SOURCE)
-    if (!source) return
-    source.setData(resultsToGeoJSON(results))
-  }, [results])
+    syncData()
+  }, [results, resultKind])
 
   // Highlight active result — panToで移動（BBOX・ズームは変更しない）
   // 解除（activeResultId=null）時にもsyncHighlight()を実行し、
@@ -446,6 +555,10 @@ function MapView({ onMarkerClick = null }) {
     <div className="absolute inset-0">
       <div ref={containerRef} className="w-full h-full" />
       <MapToolbar mapRef={mapInstanceRef} />
+      {/* (#62) バリアフリー検索の結果がある場合のみ凡例を表示（第4ピース） */}
+      {resultKind === 'barrier_free' && (results || []).length > 0 && (
+        <BarrierFreeLegend />
+      )}
     </div>
   )
 }

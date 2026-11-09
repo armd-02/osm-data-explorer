@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { getCategoryById, categoryToReadableTags, CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
+import { BARRIER_FREE_PURPOSE } from '../utils/barrierFreeResults'
 import { geocode } from '../utils/geo'
 import { useMapRef } from '../hooks/useMapRef'
 import CategoryPicker from './CategoryPicker'
@@ -82,9 +83,12 @@ function SimpleSearch({ variant = 'pc' }) {
         />
         {selectedCat && (
           <div className="mt-1.5 bg-slate-50 rounded px-2 py-1.5">
-            <p className="text-[11px] text-slate-500">
-              条件: <code className="text-[11px] bg-white px-1 rounded">{categoryToReadableTags(selectedCat)}</code>
-            </p>
+            {/* (#62) バリアフリーはOSMタグ条件を持たないため、条件行はdescriptionのみ表示 */}
+            {categoryToReadableTags(selectedCat) ? (
+              <p className="text-[11px] text-slate-500">
+                条件: <code className="text-[11px] bg-white px-1 rounded">{categoryToReadableTags(selectedCat)}</code>
+              </p>
+            ) : null}
             {selectedCat.description && (
               <p className="text-[11px] text-slate-400 mt-0.5">{selectedCat.description}</p>
             )}
@@ -96,7 +100,10 @@ function SimpleSearch({ variant = 'pc' }) {
         {!category && purpose && (
           <div className="mt-1.5 bg-primary-50 border border-primary-100 rounded px-2 py-1">
             <p className="text-[11px] text-primary-800">
-              「{purpose}」の施設種類に絞って検索します：{getPurposeLabelList(purpose)}
+              {/* (#62) バリアフリー目的: 施設種類スコープではなく専用検索の説明を出す */}
+              {purpose === BARRIER_FREE_PURPOSE
+                ? 'バリアフリー関連の施設・設備（歩道・縁石・音声・振動案内信号など）を検索します'
+                : `「${purpose}」の施設種類に絞って検索します：${getPurposeLabelList(purpose)}`}
             </p>
           </div>
         )}

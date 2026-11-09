@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
+import { BARRIER_FREE_PURPOSE } from '../utils/barrierFreeResults'
 import CategoryPicker from './CategoryPicker'
 import PrefectureTileMap from './PrefectureTileMap'
 
@@ -253,7 +254,10 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
             )}
             {!category && purpose && (
               <p className="mt-1.5 text-[11px] text-primary-800">
-                「{purpose}」の施設種類に絞って検索します：{getPurposeLabelList(purpose)}
+                {/* (#62) バリアフリー目的: 施設種類スコープではなく専用検索の説明を出す */}
+                {purpose === BARRIER_FREE_PURPOSE
+                  ? 'バリアフリー関連の施設・設備（歩道・縁石・音声・振動案内信号など）を検索します'
+                  : `「${purpose}」の施設種類に絞って検索します：${getPurposeLabelList(purpose)}`}
               </p>
             )}
             {!category && !purpose && (

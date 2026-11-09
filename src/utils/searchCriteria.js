@@ -14,6 +14,8 @@
 import { buildSimpleQuery, buildPoiQuery, buildAdvancedQuery } from './overpass'
 import { checkBboxSize } from './geo'
 import { resolveSearchBbox, isValidBbox } from './searchBbox'
+import { buildBarrierFreeQuery } from './barrierFree'
+import { isBarrierFreeCriteria } from './barrierFreeResults'
 
 // Overpass API の実用上の上限（useSearch と同じ基準）
 const MAX_AREA_KM2 = 40000
@@ -59,6 +61,21 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
     }
 
     const ms = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
+    // (#62) バリアフリー（カテゴリまたは目的）: 専用のバリアフリークエリ
+    if (isBarrierFreeCriteria(ms.category, ms.purpose)) {
+      return {
+        ok: true,
+        bbox,
+        searchSource: 'municipality',
+        searchMode: 'simple',
+        category: ms.category,
+        purpose: ms.purpose || '',
+        keyword: ms.keyword || '',
+        cuisine: ms.cuisine || '',
+        queryKind: 'barrier_free',
+        query: buildBarrierFreeQuery(bbox)
+      }
+    }
     const { query, keyword } = buildPoiQuery(bbox, ms.category, ms.keyword, ms.cuisine, ms.purpose)
     return {
       ok: true,
@@ -69,6 +86,7 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
       purpose: ms.purpose || '',
       keyword,
       cuisine: ms.cuisine,
+      queryKind: 'poi',
       query
     }
   }
@@ -112,12 +130,28 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
       tags,
       keyword,
       useAnd,
+      queryKind: 'poi',
       query
     }
   }
 
   // かんたん検索
   const ss = state.simpleSearch || { category: '', keyword: '', cuisine: '', purpose: '' }
+  // (#62) バリアフリー（カテゴリまたは目的）: 専用のバリアフリークエリ
+  if (isBarrierFreeCriteria(ss.category, ss.purpose)) {
+    return {
+      ok: true,
+      bbox,
+      searchSource: 'map',
+      searchMode: 'simple',
+      category: ss.category,
+      purpose: ss.purpose || '',
+      keyword: ss.keyword || '',
+      cuisine: ss.cuisine || '',
+      queryKind: 'barrier_free',
+      query: buildBarrierFreeQuery(bbox)
+    }
+  }
   const { query, keyword } = buildSimpleQuery(bbox, ss.category, ss.keyword, ss.cuisine, ss.purpose)
   return {
     ok: true,
@@ -128,6 +162,7 @@ export function buildSearchCriteria(state, { mapBounds = null, bboxOverride = nu
     purpose: ss.purpose || '',
     keyword,
     cuisine: ss.cuisine,
+    queryKind: 'poi',
     query
   }
 }

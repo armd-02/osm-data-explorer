@@ -322,3 +322,87 @@ describe('buildSearchCriteria — cuisineフィルタ (#54)', () => {
     expect(a.query).not.toContain('cuisine')
   })
 })
+
+describe('buildSearchCriteria — バリアフリー検索 (#62)', () => {
+  const BF_QUERY_MARKERS = [
+    `way[highway=footway](${BBOX_STR});`,
+    `way[highway=path](${BBOX_STR});`,
+    `node[barrier=kerb](${BBOX_STR});`,
+    `node[kerb](${BBOX_STR});`,
+    `node["traffic_signals:sound"](${BBOX_STR});`,
+    `node["traffic_signals:vibration"](${BBOX_STR});`
+  ]
+
+  it('かんたん検索でカテゴリ barrier_free を選ぶと専用バリアフリークエリを生成する', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'barrier_free', keyword: '駅前', location: '' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.queryKind).toBe('barrier_free')
+    expect(criteria.category).toBe('barrier_free')
+    for (const marker of BF_QUERY_MARKERS) {
+      expect(criteria.query).toContain(marker)
+    }
+    expect(criteria.query).toContain('out geom')
+    // 施設系の汎用POI・カテゴリタグは含まれない
+    expect(criteria.query).not.toContain('[amenity=cafe]')
+    expect(criteria.query).not.toContain(`node[shop](${BBOX_STR});`)
+    // キーワードはクエリに入らずクライアント側フィルタとして渡される
+    expect(criteria.keyword).toBe('駅前')
+    expect(criteria.query).not.toContain('駅前')
+  })
+
+  it('目的が「バリアフリー」の場合も専用バリアフリークエリを生成する（カテゴリ未選択）', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: '', keyword: '', location: '', purpose: 'バリアフリー' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.queryKind).toBe('barrier_free')
+    expect(criteria.query).toContain(`node[barrier=kerb](${BBOX_STR});`)
+    expect(criteria.query).not.toContain(`node[shop](${BBOX_STR});`)
+  })
+
+  it('自治体モードで barrier_free を選ぶと自治体BBOXの専用クエリを生成する', () => {
+    const criteria = buildSearchCriteria(baseState({
+      searchSource: 'municipality',
+      selectedMunicipality: { name: 'テスト市', bbox: SMALL_BBOX },
+      municipalitySearch: { category: 'barrier_free', keyword: '', cuisine: '', purpose: '' }
+    }))
+    expect(criteria.ok).toBe(true)
+    expect(criteria.searchSource).toBe('municipality')
+    expect(criteria.queryKind).toBe('barrier_free')
+    expect(criteria.query).toContain(`way[highway=footway](${BBOX_STR});`)
+    expect(criteria.query).toContain(`node["traffic_signals:sound"](${BBOX_STR});`)
+  })
+
+  it('自治体モードで目的「バリアフリー」の場合も専用クエリになる', () => {
+    const criteria = buildSearchCriteria(baseState({
+      searchSource: 'municipality',
+      selectedMunicipality: { name: 'テスト市', bbox: SMALL_BBOX },
+      municipalitySearch: { category: '', keyword: '', cuisine: '', purpose: 'バリアフリー' }
+    }))
+    expect(criteria.queryKind).toBe('barrier_free')
+    expect(criteria.query).toContain(`node[kerb](${BBOX_STR});`)
+  })
+
+  it('カテゴリ指定と目的指定が同時にある場合、バリアフリー判定はどちらでも成立する', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'barrier_free', keyword: '', location: '', purpose: 'バリアフリー' }
+    }))
+    expect(criteria.queryKind).toBe('barrier_free')
+    expect(criteria.query).toContain(`way[highway=footway](${BBOX_STR});`)
+  })
+
+  it('通常カテゴリのクエリ生成には影響しない（queryKind: poi）', () => {
+    const criteria = buildSearchCriteria(baseState({
+      bbox: SMALL_BBOX,
+      simpleSearch: { category: 'cafe', keyword: '', location: '', purpose: '遊ぶ' }
+    }))
+    expect(criteria.queryKind).toBe('poi')
+    expect(criteria.query).toContain(`node[amenity=cafe](${BBOX_STR});`)
+    expect(criteria.query).not.toContain(`way[highway=footway](${BBOX_STR});`)
+  })
+})
