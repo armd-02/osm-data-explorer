@@ -9,7 +9,6 @@ import { wheelchairBadge } from '../utils/accessibility'
 import { buildOsmElementUrl, buildIdElementUrl } from '../utils/editLinks'
 import { barrierFreeToMapGeoJSON, TACTILE_LINE_COLORS, NODE_ROLE_COLORS } from '../utils/barrierFreeGeoJSON'
 import { barrierFreeLabel } from '../utils/barrierFree'
-import BarrierFreeLegend from './BarrierFreeLegend'
 
 // Default center: Osaka, Japan（MapLibreは[経度, 緯度]順）
 const DEFAULT_CENTER = [135.5023, 34.6937]
@@ -555,10 +554,9 @@ function MapView({ onMarkerClick = null }) {
     <div className="absolute inset-0">
       <div ref={containerRef} className="w-full h-full" />
       <MapToolbar mapRef={mapInstanceRef} />
-      {/* (#62) バリアフリー検索の結果がある場合のみ凡例を表示（第4ピース） */}
-      {resultKind === 'barrier_free' && (results || []).length > 0 && (
-        <BarrierFreeLegend />
-      )}
+      {/* (#62) 凡例（BarrierFreeLegend）は地図のオーバーレイではなく、
+          親レイアウト（Appの地図ブロック・モバイル検索タブ）の地図本体の下に
+          通常のフローで描画する。 */}
     </div>
   )
 }

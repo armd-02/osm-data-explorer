@@ -11,6 +11,7 @@ import AdvancedSearch from '../AdvancedSearch'
 import SearchActionButton from '../SearchActionButton'
 import ShareButton from '../ShareButton'
 import MapView from '../MapView'
+import BarrierFreeLegend from '../BarrierFreeLegend'
 
 /**
  * (#59) モバイル「検索」タブ
@@ -122,6 +123,10 @@ export default function MobileSearchTab({ onViewResults, onMarkerClick = null })
             <div className="relative h-[240px] rounded-xl overflow-hidden border border-slate-200">
               <MapView onMarkerClick={onMarkerClick} />
             </div>
+
+            {/* (#62) バリアフリー凡例: 地図の下（地図上のオーバーレイ廃止）。
+                表示条件は BarrierFreeLegend 自身が context で判定する。 */}
+            <BarrierFreeLegend />
 
             {/* 2) エリア */}
             <section className="bg-slate-50 border border-slate-200 rounded-xl p-3" aria-label="検索範囲">

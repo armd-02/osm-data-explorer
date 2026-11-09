@@ -76,128 +76,135 @@ export default function MobileListTab({ onOpenDetail }) {
   }
 
   return (
-    <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
-      {status === 'idle' && (
-        <p className="text-sm text-slate-500 text-center pt-8">
-          検索を実行すると、結果がこの一覧に表示されます。
-        </p>
-      )}
-
-      {status === 'success' && (results || []).length === 0 && <EditPanel />}
-
-      {hasResults && (
-        <>
-          <p className="text-xs text-slate-600">
-            {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
-            {narrowing ? '（フィルタ適用中）' : ''}
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-y-auto min-h-0 px-3 py-3 space-y-3">
+        {status === 'idle' && (
+          <p className="text-sm text-slate-500 text-center pt-8">
+            検索を実行すると、結果がこの一覧に表示されます。
           </p>
+        )}
 
-          {/* (B1) 属性の充足率: 表示中結果を追従 */}
-          <AttributeCompleteness results={filtered} className="my-1" />
+        {status === 'success' && (results || []).length === 0 && <EditPanel />}
 
-          {/* フィルタバー */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-            <input
-              type="text"
-              value={nameFilter}
-              onChange={(e) => setFilters({ nameFilter: e.target.value })}
-              placeholder="施設名で絞り込む"
-              aria-label="施設名で絞り込む"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
-            <div className="flex gap-2">
+        {hasResults && (
+          <>
+            <p className="text-xs text-slate-600">
+              {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
+              {narrowing ? '（フィルタ適用中）' : ''}
+            </p>
+
+            {/* (B1) 属性の充足率: 表示中結果を追従 */}
+            <AttributeCompleteness results={filtered} className="my-1" />
+
+            {/* フィルタバー */}
+            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+              <input
+                type="text"
+                value={nameFilter}
+                onChange={(e) => setFilters({ nameFilter: e.target.value })}
+                placeholder="施設名で絞り込む"
+                aria-label="施設名で絞り込む"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+              <div className="flex gap-2">
+                <select
+                  value={activeSearch.category || ''}
+                  onChange={(e) => changeCategory(e.target.value)}
+                  aria-label="カテゴリで絞り込む"
+                  className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="">{hasData ? `カテゴリ: すべて（${(results || []).length.toLocaleString('ja-JP')}件）` : 'カテゴリ: すべて'}</option>
+                  {filterGroups.map((g) => (
+                    <optgroup key={g.group} label={g.group}>
+                      {g.categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {hasData ? `${c.label}（${c.count.toLocaleString('ja-JP')}件）` : c.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <select
+                  value={sortDir}
+                  onChange={(e) => setFilters({ sortDir: e.target.value })}
+                  aria-label="並び順"
+                  className="w-36 shrink-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="none">並び順</option>
+                  <option value="asc">名前あ行順</option>
+                  <option value="desc">名前逆順</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-700 min-h-[24px]">
+                <input
+                  type="checkbox"
+                  checked={websiteOnly}
+                  onChange={(e) => setFilters({ websiteOnly: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                Webサイトがあるものだけ
+              </label>
+              {/* (B2) 主要属性の欠落で絞り込む */}
               <select
-                value={activeSearch.category || ''}
-                onChange={(e) => changeCategory(e.target.value)}
-                aria-label="カテゴリで絞り込む"
-                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                value={resultFilters.missingFilter || 'none'}
+                onChange={(e) => setFilters({ missingFilter: e.target.value })}
+                aria-label="属性の欠落で絞る"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
-                <option value="">{hasData ? `カテゴリ: すべて（${(results || []).length.toLocaleString('ja-JP')}件）` : 'カテゴリ: すべて'}</option>
-                {filterGroups.map((g) => (
-                  <optgroup key={g.group} label={g.group}>
-                    {g.categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {hasData ? `${c.label}（${c.count.toLocaleString('ja-JP')}件）` : c.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              <select
-                value={sortDir}
-                onChange={(e) => setFilters({ sortDir: e.target.value })}
-                aria-label="並び順"
-                className="w-36 shrink-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="none">並び順</option>
-                <option value="asc">名前あ行順</option>
-                <option value="desc">名前逆順</option>
+                <option value="none">未登録の絞り込み: なし</option>
+                <option value="any">いずれかの属性が未登録</option>
+                <option value="phone">電話が未登録</option>
+                <option value="opening_hours">営業時間が未登録</option>
+                <option value="website">Webサイトが未登録</option>
+                <option value="address">住所が未登録</option>
               </select>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700 min-h-[24px]">
-              <input
-                type="checkbox"
-                checked={websiteOnly}
-                onChange={(e) => setFilters({ websiteOnly: e.target.checked })}
-                className="w-4 h-4"
-              />
-              Webサイトがあるものだけ
-            </label>
-            {/* (B2) 主要属性の欠落で絞り込む */}
-            <select
-              value={resultFilters.missingFilter || 'none'}
-              onChange={(e) => setFilters({ missingFilter: e.target.value })}
-              aria-label="属性の欠落で絞る"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          </>
+        )}
+
+        {hasResults && filtered.length === 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center space-y-2">
+            <p className="text-sm text-amber-800">
+              {/* (A4) 未登録絞り込みで0件は「失敗」ではなく「充実」の好機として伝える */}
+              {(resultFilters.missingFilter || 'none') !== 'none'
+                ? 'この地域では、該当する未登録施設はありません — 主要属性が充実しています。'
+                : '現在の絞り込み条件に一致する施設はありません。'}
+            </p>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="min-h-[44px] px-4 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg"
             >
-              <option value="none">未登録の絞り込み: なし</option>
-              <option value="any">いずれかの属性が未登録</option>
-              <option value="phone">電話が未登録</option>
-              <option value="opening_hours">営業時間が未登録</option>
-              <option value="website">Webサイトが未登録</option>
-              <option value="address">住所が未登録</option>
-            </select>
+              フィルタをリセット
+            </button>
           </div>
-        </>
-      )}
+        )}
 
-      {hasResults && filtered.length === 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center space-y-2">
-          <p className="text-sm text-amber-800">
-            {/* (A4) 未登録絞り込みで0件は「失敗」ではなく「充実」の好機として伝える */}
-            {(resultFilters.missingFilter || 'none') !== 'none'
-              ? 'この地域では、該当する未登録施設はありません — 主要属性が充実しています。'
-              : '現在の絞り込み条件に一致する施設はありません。'}
-          </p>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="min-h-[44px] px-4 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg"
-          >
-            フィルタをリセット
-          </button>
+        <div className="space-y-2">
+          {visible.map((r) => (
+            <MobileFacilityCard
+              key={`${r.type}/${r.id}`}
+              result={r}
+              onOpen={(res) => onOpenDetail && onOpenDetail(res, 'list')}
+              showMissing={(resultFilters.missingFilter || 'none') !== 'none'}
+            />
+          ))}
         </div>
-      )}
 
-      <div className="space-y-2">
-        {visible.map((r) => (
-          <MobileFacilityCard
-            key={`${r.type}/${r.id}`}
-            result={r}
-            onOpen={(res) => onOpenDetail && onOpenDetail(res, 'list')}
-            showMissing={(resultFilters.missingFilter || 'none') !== 'none'}
-          />
-        ))}
+        {filtered.length > MAX_CARDS && (
+          <p className="text-xs text-slate-500 text-center">
+            最初の{MAX_CARDS.toLocaleString()}件を表示しています（全{filtered.length.toLocaleString()}件）。
+            絞り込みで対象を減らすと、ほかの施設を表示できます。
+          </p>
+        )}
       </div>
 
-      {filtered.length > MAX_CARDS && (
-        <p className="text-xs text-slate-500 text-center">
-          最初の{MAX_CARDS.toLocaleString()}件を表示しています（全{filtered.length.toLocaleString()}件）。
-          絞り込みで対象を減らすと、ほかの施設を表示できます。
-        </p>
+      {/* 保存ボタン（スロールームの外に固定 — 検索タブの検索ボタンと同じ配置） */}
+      {hasResults && (
+        <div className="shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <ExportBar variant="stacked" />
+        </div>
       )}
-
-      {hasResults && <ExportBar />}
     </div>
   )
 }
@@ -232,90 +239,97 @@ function BarrierFreeMobileList() {
   const narrowing = filtered.length < (results || []).length
 
   return (
-    <div className="h-full overflow-y-auto px-3 py-3 space-y-3">
-      {status === 'idle' && (
-        <p className="text-sm text-slate-500 text-center pt-8">
-          検索を実行すると、結果がこの一覧に表示されます。
-        </p>
-      )}
-
-      {status === 'success' && (results || []).length === 0 && (
-        <div className="bg-white border border-dashed border-slate-200 rounded-xl p-4 text-center space-y-1">
-          <p className="text-sm text-slate-500">この地域ではバリアフリー関連の登録がありません。</p>
-          <p className="text-xs text-slate-400">iDエディタで点字ブロック・音声案内などを追加できます。</p>
-        </div>
-      )}
-
-      {hasResults && (
-        <>
-          <p className="text-xs text-slate-600">
-            {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
-            {narrowing ? '（フィルタ適用中）' : ''}
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-y-auto min-h-0 px-3 py-3 space-y-3">
+        {status === 'idle' && (
+          <p className="text-sm text-slate-500 text-center pt-8">
+            検索を実行すると、結果がこの一覧に表示されます。
           </p>
+        )}
 
-          {/* フィルタバー */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-            <input
-              type="text"
-              value={resultFilters.nameFilter}
-              onChange={(e) => setFilters({ nameFilter: e.target.value })}
-              placeholder="名称で絞り込む（任意）"
-              aria-label="名称で絞り込む"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
-            <div className="flex gap-2">
-              <select
-                value={resultFilters.typeFilter}
-                onChange={(e) => setFilters({ typeFilter: e.target.value })}
-                aria-label="要素種別で絞り込む"
-                className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="all">タイプ: すべて</option>
-                <option value="way">線 (way)</option>
-                <option value="node">点 (node)</option>
-              </select>
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="shrink-0 min-h-[44px] px-3 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg"
-              >
-                リセット
-              </button>
-            </div>
-            <p className="text-xs text-slate-400">
-              OpenStreetMapに登録済みのデータのみ。点字ブロックは登録情報（tactile_paving）を表示します。
-            </p>
+        {status === 'success' && (results || []).length === 0 && (
+          <div className="bg-white border border-dashed border-slate-200 rounded-xl p-4 text-center space-y-1">
+            <p className="text-sm text-slate-500">この地域ではバリアフリー関連の登録がありません。</p>
+            <p className="text-xs text-slate-400">iDエディタで点字ブロック・音声案内などを追加できます。</p>
           </div>
-        </>
-      )}
+        )}
 
-      {hasResults && filtered.length === 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center space-y-2">
-          <p className="text-sm text-amber-800">現在の絞り込み条件に一致する要素はありません。</p>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="min-h-[44px] px-4 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg"
-          >
-            フィルタをリセット
-          </button>
+        {hasResults && (
+          <>
+            <p className="text-xs text-slate-600">
+              {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
+              {narrowing ? '（フィルタ適用中）' : ''}
+            </p>
+
+            {/* フィルタバー */}
+            <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+              <input
+                type="text"
+                value={resultFilters.nameFilter}
+                onChange={(e) => setFilters({ nameFilter: e.target.value })}
+                placeholder="名称で絞り込む（任意）"
+                aria-label="名称で絞り込む"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+              <div className="flex gap-2">
+                <select
+                  value={resultFilters.typeFilter}
+                  onChange={(e) => setFilters({ typeFilter: e.target.value })}
+                  aria-label="要素種別で絞り込む"
+                  className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="all">タイプ: すべて</option>
+                  <option value="way">線 (way)</option>
+                  <option value="node">点 (node)</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="shrink-0 min-h-[44px] px-3 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg"
+                >
+                  リセット
+                </button>
+              </div>
+              <p className="text-xs text-slate-400">
+                OpenStreetMapに登録済みのデータのみ。点字ブロックは登録情報（tactile_paving）を表示します。
+              </p>
+            </div>
+          </>
+        )}
+
+        {hasResults && filtered.length === 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center space-y-2">
+            <p className="text-sm text-amber-800">現在の絞り込み条件に一致する要素はありません。</p>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="min-h-[44px] px-4 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg"
+            >
+              フィルタをリセット
+            </button>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {visible.map((r) => (
+            <BarrierFreeCard key={`${r.type}/${r.id}`} result={r} />
+          ))}
         </div>
-      )}
 
-      <div className="space-y-2">
-        {visible.map((r) => (
-          <BarrierFreeCard key={`${r.type}/${r.id}`} result={r} />
-        ))}
+        {filtered.length > MAX_CARDS && (
+          <p className="text-xs text-slate-500 text-center">
+            最初の{MAX_CARDS.toLocaleString()}件を表示しています（全{filtered.length.toLocaleString()}件）。
+            絞り込みで対象を減らすと、ほかの要素を表示できます。
+          </p>
+        )}
       </div>
 
-      {filtered.length > MAX_CARDS && (
-        <p className="text-xs text-slate-500 text-center">
-          最初の{MAX_CARDS.toLocaleString()}件を表示しています（全{filtered.length.toLocaleString()}件）。
-          絞り込みで対象を減らすと、ほかの要素を表示できます。
-        </p>
+      {/* 保存ボタン（スロールームの外に固定 — 検索タブの検索ボタンと同じ配置） */}
+      {hasResults && (
+        <div className="shrink-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <ExportBar variant="stacked" />
+        </div>
       )}
-
-      {hasResults && <ExportBar />}
     </div>
   )
 }

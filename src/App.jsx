@@ -16,6 +16,7 @@ import { getMapInstance } from './hooks/useMapRef'
 import { useSearch } from './hooks/useSearch'
 import { buildSearchCriteria } from './utils/searchCriteria'
 import SearchActionButton from './components/SearchActionButton'
+import BarrierFreeLegend from './components/BarrierFreeLegend'
 import { useIsMobile } from './hooks/useIsMobile'
 import MobileShell from './components/mobile/MobileShell'
 import { BatchMatchProvider } from './context/BatchMatchContext.jsx'
@@ -136,7 +137,7 @@ function App() {
  * - 結果一覧: 高さ上限640px・内部スクロール（ResultsPanel内で設定。ページが際限なく長くなるのを防ぐ）
  * - 地図: 高さ520px固定のブロック（flexで残り高さを埋める方式は廃止。隠す/表示する切替あり）
  */
-function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setShowMap }) {
+export function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setShowMap }) {
   const { state } = useApp()
   const { search, cancel } = useSearch()
 
@@ -246,6 +247,9 @@ function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap, setSho
             <div className="search-split relative h-[520px]">
               <MapView />
             </div>
+            {/* (#62) バリアフリー凡例: 地図本体の下（地図上のオーバーレイ廃止）。
+                表示条件は BarrierFreeLegend 自身が context で判定する。 */}
+            <BarrierFreeLegend />
           </div>
         ) : (
           <div className="flex items-center justify-center p-4 bg-slate-50 border border-dashed border-slate-300 rounded-lg">

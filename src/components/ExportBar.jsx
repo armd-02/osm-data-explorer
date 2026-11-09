@@ -10,7 +10,7 @@ import { applyResultFilters, hasActiveFilters } from '../utils/resultFilters'
  *       フィルタが有効なときは「一覧で表示中の件数」と一致させて出力し、
  *       保存前に出力件数を明示する。
  */
-function ExportBar() {
+function ExportBar({ variant = 'horizontal' } = {}) {
   const { state } = useApp()
   const { results, fetchMeta, searchSource, selectedMunicipality, resultFilters } = state
 
@@ -25,6 +25,42 @@ function ExportBar() {
   const prefix = searchSource === 'municipality' && selectedMunicipality?.name
     ? `osm-${selectedMunicipality.displayName || selectedMunicipality.name}`
     : 'osm-results'
+
+  if (variant === 'stacked') {
+    return (
+      <div className="space-y-2 px-3 py-3 bg-slate-50 border-t border-slate-200">
+        <p className="text-xs text-slate-500">
+          {filtersOn ? `${results.length}件中、${filtered.length}件を保存します` : `${filtered.length}件を保存します`}
+        </p>
+        <button
+          onClick={() => downloadCSV(filtered, fetchMeta, prefix)}
+          disabled={exportDisabled}
+          className="w-full min-h-[48px] py-3 text-base font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={exportDisabled ? 'フィルタに一致する施設がありません' : '一覧をCSVとして保存します（Excelで開けます・UTF-8 BOM付き）'}
+        >
+          📄 一覧を保存（CSV）
+        </button>
+        <button
+          onClick={() => downloadGeoJSON(filtered, fetchMeta)}
+          disabled={exportDisabled}
+          className="w-full min-h-[44px] bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 text-sm rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={exportDisabled ? 'フィルタに一致する施設がありません' : 'GeoJSONとして保存（QGIS等の地図ツール向け）'}
+        >
+          GeoJSON（高度な形式）
+        </button>
+        <div className="flex items-center justify-between gap-2">
+          {searchSource === 'municipality' && selectedMunicipality?.name && (
+            <span className="text-[10px] text-slate-500">
+              📍 {selectedMunicipality.displayName || selectedMunicipality.name}
+            </span>
+          )}
+          <span className="text-[10px] text-slate-400 ml-auto">
+            ODbL / © OpenStreetMap contributors
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center flex-wrap gap-x-2 gap-y-1 px-4 py-2 bg-slate-50 border-t border-slate-200">

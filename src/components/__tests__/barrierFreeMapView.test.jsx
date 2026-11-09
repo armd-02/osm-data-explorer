@@ -10,7 +10,10 @@
  * - POI検索へ切り返すと bf ソース・レイヤは削除され、'results' に復元される。
  * - bf-node のクリックは POI の点レイヤと同様にポップアップ（PC）/
  *   ボトムシート（モバイル: onMarkerClick）を出す。
- * - 凡例（BarrierFreeLegend）はバリアフリー結果が1件以上ある場合のみ表示。
+ * - 凡例（BarrierFreeLegend）は MapView 内では描画しない（地図上のオーバーレイ廃止）。
+ *   表示は親レイアウト（Appの地図ブロック・モバイル検索タブ）が地図本体の下の
+ *   通常のフローで行い、表示条件（resultKind + 結果数）は BarrierFreeLegend 自身で
+ *   判定する（BarrierFreeLegend.test.jsx / barrierFreeLegendPlacement.test.jsx 参照）。
  */
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -285,38 +288,11 @@ describe('バリアフリー線・点のクリック（ポップアップ）', (
   })
 })
 
-describe('凡例（BarrierFreeLegend）', () => {
-  it('バリアフリー結果が1件以上ある場合、地図上に凡例を表示する', () => {
+describe('凡例の位置（地図上のオーバーレイ廃止）', () => {
+  it('MapView は凡例を描画しない（凡例は地図本体の下へ移動）', () => {
     const { view } = renderMap({ results: BF_RESULTS, resultKind: 'barrier_free' })
     fireLoad()
-    expect(view.queryByText('凡例')).toBeTruthy()
-    expect(view.queryByText('歩道・点字ブロックあり')).toBeTruthy()
-    expect(view.queryByText('歩道・点字ブロックなし')).toBeTruthy()
-    expect(view.queryByText('歩道・点字ブロック未記録')).toBeTruthy()
-    expect(view.queryByText('音声・振動案内信号')).toBeTruthy()
-    expect(view.queryByText('縁石')).toBeTruthy()
-    expect(view.queryByText('縁石＋案内信号')).toBeTruthy()
-  })
-
-  it('POI検索の結果では凡例を表示しない', () => {
-    const { view } = renderMap({ results: POI_RESULTS, resultKind: 'poi' })
-    fireLoad()
     expect(view.queryByText('凡例')).toBeNull()
-  })
-
-  it('バリアフリー検索でも結果が0件なら凡例を表示しない', () => {
-    const { view } = renderMap({ results: [], resultKind: 'barrier_free' })
-    fireLoad()
-    expect(view.queryByText('凡例')).toBeNull()
-  })
-
-  it('結果が0件から1件以上になると凡例が表示される', () => {
-    const { view, state } = renderMap({ results: [], resultKind: 'barrier_free' })
-    fireLoad()
-    expect(view.queryByText('凡例')).toBeNull()
-
-    rerender(view, { ...state, results: [BF_RESULTS[0]] })
-    expect(view.queryByText('凡例')).toBeTruthy()
   })
 })
 
@@ -327,7 +303,7 @@ describe('bf レイヤ定義（MapLibre仕様）', () => {
       filter: ['==', ['get', 'kind'], 'way']
     })
     expect(BF_LINE_LAYER_DEF.paint['line-color']).toEqual([
-      'match', ['get', 'tactile'], 'yes', '#059669', 'no', '#e11d48', '#94a3b8'
+      'match', ['get', 'tactile'], 'yes', '#eab308', 'no', '#dc2626', '#f87171'
     ])
     expect(BF_LINE_LAYER_DEF.paint['line-width']).toBe(4)
     // トップレベルにcamelCaseプロパティが無い
