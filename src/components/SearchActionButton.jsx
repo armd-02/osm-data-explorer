@@ -2,11 +2,11 @@
  * Search/Cancel button (Issue #47)
  *
  * Placed outside the scrollable search form area so the primary action
- * is always visible without scrolling. Used in the PC header and on the
- * search screen of the mobile layout.
+ * is always visible without scrolling. Used in the fixed bottom bar of
+ * the search screen (PC and mobile layouts).
  *
- * fullWidth=true: mobile variant — large tap target (min 44px), hint
- * shown below the button. fullWidth=false: original PC header variant.
+ * fullWidth=true: bar variant — large tap target (min 44px), full width,
+ * hint shown below the button. fullWidth=false: compact inline variant.
  */
 import React from 'react'
 

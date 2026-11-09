@@ -132,8 +132,9 @@ function App() {
 
 /**
  * 施設検索タブの内容
- * 縦に流れるスクロールレイアウト（スマホと同じ考え方）: 画面全体が1つの縦スクロール列。
- * ブロック順: StatusBanner → EditPanel → 検索条件 → 結果一覧 → 地図 → ExportBar
+ * スロールーム＋外側固定バー（モバイル版と同じ考え方）: 上部は縦スクロール列で、
+ * その外側（画面下端）に「検索する」ボタンを固定して常に視認可能にする。
+ * スロールーム内のブロック順: StatusBanner → EditPanel → 検索条件 → 結果一覧 → 地図 → ExportBar
  * - 検索条件: 折りたたみ式（ヘッダー行 ⇄ フォーム表示）、展開時は自然の高さ。幅いっぱいの行
  * - 結果一覧+地図: 幅1280px以上（xl）で2列グリッド（並列）、未満では1列で縦積み
  * - 結果一覧: 高さ上限640px・内部スクロール（ResultsPanel内で設定。ページが際限なく長くなるのを防ぐ）
@@ -204,7 +205,8 @@ export function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap,
   const criteria = makeCriteria()
 
   return (
-    <div className="search-workspace flex-1 min-h-0 overflow-y-auto space-y-3">
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="search-workspace flex-1 min-h-0 overflow-y-auto space-y-3">
       <StatusBanner />
       <EditPanel />
 
@@ -228,14 +230,7 @@ export function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap,
               範囲: {state.bbox.south.toFixed(4)}°N, {state.bbox.west.toFixed(4)}°E 〜 {state.bbox.north.toFixed(4)}°N, {state.bbox.east.toFixed(4)}°E
             </span>
           )}
-          {/* 検索アクション — フォームのスクロール領域の外で常に視認可能 */}
-          <div className="ml-auto flex items-center gap-2">
-            <SearchActionButton
-              criteria={criteria}
-              status={state.status}
-              onSearch={handleSearchClick}
-              onCancel={cancel}
-            />
+          <div className="ml-auto">
             <ShareButton />
           </div>
         </div>
@@ -300,6 +295,19 @@ export function SearchTabContent({ searchCollapsed, setSearchCollapsed, showMap,
       </div>
 
       <ExportBar />
+      </div>
+
+      {/* 検索実行 — スロールームの外に固定（モバイル版と同一の配置: 常時視認可能・P0再発防止） */}
+      <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
+        <SearchActionButton
+          fullWidth
+          criteria={criteria}
+          status={state.status}
+          onSearch={handleSearchClick}
+          onCancel={cancel}
+          label={state.searchSource === 'map' ? 'この表示範囲で検索' : '検索する'}
+        />
+      </div>
     </div>
   )
 }

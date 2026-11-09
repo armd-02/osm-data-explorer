@@ -92,7 +92,7 @@ describe('PCレイアウト構造（タブバー廃止・ハンバーガーメ�
 
     // 検索条件エリア（SearchPanel・折りたたみヘッダー）
     expect(screen.getByText('検索条件')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '検索する' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'この表示範囲で検索' })).toBeTruthy()
 
     // 一覧エリア（ResultsPanel初期状態: 0件・「まだ登録がない」案内）
     expect(screen.getByText(/件が見つかりました/)).toBeTruthy()

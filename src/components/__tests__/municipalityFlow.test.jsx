@@ -341,8 +341,8 @@ describe('自治体モード E2E（カテゴリ反映の検証）', () => {
     //   last-wins引き継ぎがURLのカテゴリを空で上書きする → 順序が重要）
     await expectCategoryLabel('カフェ', 5000)
 
-    // 検索してクエリがcafeになる
-    fireEvent.click(screen.getByText('検索する'))
+    // 検索してクエリがcafeになる（地図モード: ラベルは「この表示範囲で検索」）
+    fireEvent.click(screen.getByText('この表示範囲で検索'))
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
     expect(overpassCalls[0]).toContain('amenity=cafe')
   }, IT_TIMEOUT)
@@ -386,8 +386,8 @@ describe('#54 料理（cuisine）フィルタ E2E', () => {
     fireEvent.change(cuisineSelect, { target: { value: 'ramen' } })
     await waitFor(() => expect(cuisineSelect.value).toBe('ramen'))
 
-    // 検索 → クエリに両条件がAND連結される
-    fireEvent.click(screen.getByText('検索する'))
+    // 検索 → クエリに両条件がAND連結される（地図モード: ラベルは「この表示範囲で検索」）
+    fireEvent.click(screen.getByText('この表示範囲で検索'))
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
     expect(overpassCalls[0]).toContain('[amenity=restaurant][cuisine=ramen]')
   }, IT_TIMEOUT)
@@ -404,8 +404,8 @@ describe('#54 料理（cuisine）フィルタ E2E', () => {
       return s
     }, { timeout: 3000 })
 
-    // 検索 → 旧ラーメンカテゴリと同等のクエリ
-    fireEvent.click(screen.getByText('検索する'))
+    // 検索 → 旧ラーメンカテゴリと同等のクエリ（地図モード: ラベルは「この表示範囲で検索」）
+    fireEvent.click(screen.getByText('この表示範囲で検索'))
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
     expect(overpassCalls[0]).toContain('[amenity=restaurant][cuisine=ramen]')
   }, IT_TIMEOUT)
@@ -430,8 +430,8 @@ describe('#54 料理（cuisine）フィルタ E2E', () => {
       expect(screen.queryByText('料理（任意）')).toBeNull()
     }, { timeout: 3000 })
 
-    // 検索 → cuisineはクエリに含まれない（自動クリア+クエリ側ガード）
-    fireEvent.click(screen.getByText('検索する'))
+    // 検索 → cuisineはクエリに含まれない（自動クリア+クエリ側ガード）（地図モード: ラベルは「この表示範囲で検索」）
+    fireEvent.click(screen.getByText('この表示範囲で検索'))
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
     expect(overpassCalls[0]).toContain('[amenity=pharmacy]')
     expect(overpassCalls[0]).not.toContain('cuisine')

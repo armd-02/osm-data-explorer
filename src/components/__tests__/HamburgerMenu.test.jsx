@@ -180,7 +180,7 @@ describe('PC版 ハンバーガーメニュー', () => {
 
     // 検索画面が表示される（検索条件フォーム・検索ボタン）
     expect(screen.getByText('検索条件')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '検索する' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'この表示範囲で検索' })).toBeTruthy()
     // 一括照合画面はhiddenで非表示（アクセシビリティツリーからも除外）
     expect(screen.queryByRole('button', { name: '照合' })).toBeNull()
   }, IT_TIMEOUT)

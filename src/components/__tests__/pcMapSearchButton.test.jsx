@@ -88,7 +88,7 @@ describe('(回帰) PC地図モード: ページ開いた直後の検索ボタン
     // 地図のロード完了後にcriteriaが地図表示範囲で再計算され、
     // 「検索する」ボタンが有効化される（no_bboxのまま無効ではない）
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: '検索する' })
+      const btn = screen.getByRole('button', { name: 'この表示範囲で検索' })
       expect(btn.hasAttribute('disabled')).toBe(false)
     }, { timeout: 5000 })
 
@@ -101,12 +101,12 @@ describe('(回帰) PC地図モード: ページ開いた直後の検索ボタン
 
     // 地図のロード完了を待ち、ボタンが有効化される
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: '検索する' })
+      const btn = screen.getByRole('button', { name: 'この表示範囲で検索' })
       expect(btn.hasAttribute('disabled')).toBe(false)
     }, { timeout: 5000 })
 
     // 入力（カテゴリ・キーワード）なしで「検索する」を押す
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
 
     // 検索が実行され、クエリに地図の初期表示範囲（getBounds）が反映される
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
@@ -118,7 +118,7 @@ describe('(回帰) PC地図モード: ページ開いた直後の検索ボタン
 
     // ボタン有効化を待つ
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: '検索する' })
+      const btn = screen.getByRole('button', { name: 'この表示範囲で検索' })
       expect(btn.hasAttribute('disabled')).toBe(false)
     }, { timeout: 5000 })
 
@@ -129,12 +129,12 @@ describe('(回帰) PC地図モード: ページ開いた直後の検索ボタン
     bounds._northEast = { lat: 35.1, lng: 139.1 }
     await waitFor(() => {
       // moveend後の再レンダリングでcriteriaが新しい範囲で再計算される
-      const btn = screen.getByRole('button', { name: '検索する' })
+      const btn = screen.getByRole('button', { name: 'この表示範囲で検索' })
       expect(btn.hasAttribute('disabled')).toBe(false)
     }, { timeout: 5000 })
 
     // 押下 → 変更後の表示範囲（35.0,139.0,35.1,139.1）で検索される
-    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
     expect(overpassCalls[0]).toContain('35.000000,139.000000,35.100000,139.100000')
   }, IT_TIMEOUT)
@@ -149,7 +149,7 @@ describe('(回帰) PC地図モード: ページ開いた直後の検索ボタン
 
     // ボタン有効化を待つ（loadイベントでcriteriaが地図表示範囲で再計算される）
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: '検索する' })
+      const btn = screen.getByRole('button', { name: 'この表示範囲で検索' })
       expect(btn.hasAttribute('disabled')).toBe(false)
     }, { timeout: 5000 })
 
@@ -163,7 +163,7 @@ describe('(回帰) PC地図モード: ページ開いた直後の検索ボタン
 
     // ボタンが無効化され、「広すぎ」メッセージが出る（too_largeバリデーションが機能）
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: '検索する' })
+      const btn = screen.getByRole('button', { name: 'この表示範囲で検索' })
       expect(btn.hasAttribute('disabled')).toBe(true)
     }, { timeout: 5000 })
     // too_large失敗時にcheckBboxSizeのメッセージ（2500km²超の「広すぎ」段階）が表示される
@@ -176,7 +176,7 @@ describe('(回帰) PC地図モード: ページ開いた直後の検索ボタン
 
     // ボタンが再有効化される（バリデーションがリアルタイムに反応）
     await waitFor(() => {
-      const btn = screen.getByRole('button', { name: '検索する' })
+      const btn = screen.getByRole('button', { name: 'この表示範囲で検索' })
       expect(btn.hasAttribute('disabled')).toBe(false)
     }, { timeout: 5000 })
   }, IT_TIMEOUT)
