@@ -14,7 +14,6 @@ const PARAM_KEYS = {
   mode: 'm',         // search mode: s(imple) / a(dvanced)
   cat: 'c',          // category ID
   kw: 'k',           // keyword
-  loc: 'l',          // location (for geocoding)
   lat: 'lat',        // center lat
   lon: 'lon',        // center lon
   zoom: 'z',         // zoom level
@@ -114,7 +113,6 @@ export function encodeStateToURL(state) {
     if (state.searchMode === 'simple') {
       if (state.simpleSearch.category) params.set(PARAM_KEYS.cat, state.simpleSearch.category)
       if (state.simpleSearch.keyword) params.set(PARAM_KEYS.kw, state.simpleSearch.keyword)
-      if (state.simpleSearch.location) params.set(PARAM_KEYS.loc, state.simpleSearch.location)
       if (state.simpleSearch.cuisine) params.set(PARAM_KEYS.cuisine, state.simpleSearch.cuisine)
       if (state.simpleSearch.purpose) params.set(PARAM_KEYS.purpose, state.simpleSearch.purpose)
     }
@@ -188,10 +186,9 @@ export function decodeURLToState(searchParams) {
     // (#54) cuisine + 旧 c=ramen の自動マッピング
     const resolved = resolveCategoryAndCuisine(params.get(PARAM_KEYS.cat), params.get(PARAM_KEYS.cuisine))
     const kw = params.get(PARAM_KEYS.kw)
-    const loc = params.get(PARAM_KEYS.loc)
     const purpose = params.get(PARAM_KEYS.purpose) || ''
-    if (resolved.category || resolved.cuisine || kw || loc || purpose) {
-      state.simpleSearch = { category: resolved.category, keyword: kw || '', location: loc || '', cuisine: resolved.cuisine, purpose }
+    if (resolved.category || resolved.cuisine || kw || purpose) {
+      state.simpleSearch = { category: resolved.category, keyword: kw || '', cuisine: resolved.cuisine, purpose }
       hasData = true
     }
 

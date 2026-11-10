@@ -19,7 +19,7 @@
 export function createInitialState() {
   return {
     searchMode: 'simple',
-    simpleSearch: { category: '', keyword: '', location: '', cuisine: '', purpose: '' },
+    simpleSearch: { category: '', keyword: '', cuisine: '', purpose: '' },
     advancedSearch: { tags: [], keyword: '', useAnd: true },
     bbox: null,
     // (Task 2) bboxの来源: 'url'（URL復元）| 'search'（検索実行）| null
@@ -130,7 +130,7 @@ export function appReducer(state, action) {
       // 戻る（カテゴリが変わってない）」問題を解消する。
       const src = action.payload
       const ms = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
-      const ss = state.simpleSearch || { category: '', keyword: '', location: '', cuisine: '', purpose: '' }
+      const ss = state.simpleSearch || { category: '', keyword: '', cuisine: '', purpose: '' }
       let next
       if (src === 'municipality') {
         next = {

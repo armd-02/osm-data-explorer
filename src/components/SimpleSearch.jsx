@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { getCategoryById, categoryToReadableTags, CUISINES, isFoodCategory, getPurposeLabelList } from '../data/categories'
 import { BARRIER_FREE_PURPOSE } from '../utils/barrierFreeResults'
-import { geocode } from '../utils/geo'
-import { useMapRef } from '../hooks/useMapRef'
 import CategoryPicker from './CategoryPicker'
 
 /**
@@ -16,46 +14,14 @@ import CategoryPicker from './CategoryPicker'
 function SimpleSearch({ variant = 'pc' }) {
   const isMobile = variant === 'mobile'
   const labels = isMobile
-    ? { keyword: '施設名・キーワード', location: '地名' }
-    : { keyword: '名前やキーワード', location: '場所（地名）' }
+    ? { keyword: '施設名・キーワード' }
+    : { keyword: '名前やキーワード' }
   const { state, dispatch } = useApp()
-  const { category, keyword, location, cuisine, purpose } = state.simpleSearch
-  const [geocoding, setGeocoding] = useState(false)
-  const [geocodeMsg, setGeocodeMsg] = useState(null)
-  const mapRef = useMapRef()
+  const { category, keyword, cuisine, purpose } = state.simpleSearch
 
   const update = (field, value) => {
     dispatch({ type: 'SET_SIMPLE_SEARCH', payload: { [field]: value } })
   }
-
-  const handleLocate = useCallback(async (e) => {
-    e.preventDefault()
-    if (!location.trim() || geocoding) return
-
-    setGeocoding(true)
-    setGeocodeMsg(null)
-
-    try {
-      const result = await geocode(location)
-      if (!result) {
-        setGeocodeMsg({ type: 'error', text: '場所が見つかりませんでした' })
-        return
-      }
-
-      // 地図を移動
-      if (mapRef.current) {
-        const map = mapRef.current
-        map.setView([result.lat, result.lon], Math.max(map.getZoom(), 14))
-      }
-
-      setGeocodeMsg({ type: 'success', text: `「${location}」へ移動しました` })
-      update('location', '')
-    } catch (error) {
-      setGeocodeMsg({ type: 'error', text: error.message })
-    } finally {
-      setGeocoding(false)
-    }
-  }, [location, geocoding, mapRef, dispatch])
 
   // 選択中カテゴリのタグ情報
   const selectedCat = useMemo(() => (category ? getCategoryById(category) : null), [category])
@@ -153,39 +119,6 @@ function SimpleSearch({ variant = 'pc' }) {
         </p>
       </div>
 
-      {/* Location */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">
-          {labels.location}
-        </label>
-        <div className="flex gap-1.5">
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => update('location', e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleLocate(e)}
-            placeholder="例: 大阪市北区、十三"
-            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          />
-          <button
-            type="button"
-            onClick={handleLocate}
-            disabled={geocoding || !location.trim()}
-            className="px-3 py-2 bg-slate-200 hover:bg-slate-300 disabled:bg-slate-100 disabled:text-slate-300 text-slate-700 text-sm rounded-lg transition-colors"
-            title="地図をその場所へ移動"
-          >
-            {geocoding ? '...' : '移動'}
-          </button>
-        </div>
-        <p className="mt-1 text-xs text-slate-400">
-          地図を目的地へ移動します（検索範囲は変更されません）。
-        </p>
-        {geocodeMsg && (
-          <p className={`mt-1 text-xs ${geocodeMsg.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-            {geocodeMsg.text}
-          </p>
-        )}
-      </div>
     </div>
   )
 }
