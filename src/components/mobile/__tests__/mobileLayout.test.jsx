@@ -45,11 +45,18 @@ const OVERPASS_ELEMENTS = [
   { type: 'way', id: 2001, center: { lat: 34.87, lon: 135.52 }, tags: { name: 'テスト書店', shop: 'books' } },
 ]
 
+// (修正) バリアフリー検索用の要素（歩道ウェイ＋縁石ノード）
+const BF_ELEMENTS = [
+  { type: 'way', id: 3001, tags: { highway: 'footway', tactile_paving: 'yes', name: '中央通り歩道' }, geometry: [ { lat: 34.8, lon: 135.4 }, { lat: 34.81, lon: 135.45 }, { lat: 34.82, lon: 135.5 } ] },
+  { type: 'node', id: 3002, lat: 34.85, lon: 135.55, tags: { barrier: 'kerb' } },
+]
+
 // ===== フック =====
 let mediaMatches = true
 let mediaListeners = []
 let overpassCalls = []
 let overpassStatus = 200
+let overpassElements = OVERPASS_ELEMENTS
 
 function setupMatchMedia() {
   mediaListeners = []
@@ -87,7 +94,7 @@ function setupFetchMock() {
         ok: true,
         status: 200,
         headers: new Map(),
-        json: async () => ({ version: 0.6, generator: 'Overpass API', osm3s: {}, elements: OVERPASS_ELEMENTS }),
+        json: async () => ({ version: 0.6, generator: 'Overpass API', osm3s: {}, elements: overpassElements }),
       }
     }
     return { ok: false, status: 404, headers: new Map(), json: async () => ({}) }
@@ -170,6 +177,7 @@ beforeEach(() => {
   }
   overpassCalls = []
   overpassStatus = 200
+  overpassElements = OVERPASS_ELEMENTS
   setupFetchMock()
   clearCache()
 })
@@ -588,5 +596,103 @@ describe('(#59) エラー表示の継続性', () => {
     // 一覧タブへ移動してもエラーbannerは残る（全タブ共通表示）
     clickTab('一覧')
     expect(screen.getByText(/サーバーエラー/)).toBeTruthy()
+  }, IT_TIMEOUT)
+})
+
+describe('(修正) バリアフリー検索: 成功時は「検索」タブ（地図）へ切替', () => {
+  // 検索タブの MapView（グローバルに登録される）の結果GeoJSON
+  async function expectBfOnSearchMap() {
+    await waitFor(() => {
+      const map = getMapInstance()
+      expect(map).toBeTruthy()
+      const features = map._lastGeoJSON?.data?.features || []
+      expect(features.length).toBe(2)
+      expect(features.map((f) => f.geometry.type).sort()).toEqual(['LineString', 'Point'])
+    }, { timeout: 8000 })
+  }
+
+  it('地図モード: バリアフリー検索成功 → 「検索」タブに残り、地図に歩道の線・縁石の点が表示される', async () => {
+    renderApp()
+    overpassElements = BF_ELEMENTS
+
+    // 目的チップ「バリアフリー」でバリアフリー検索に
+    fireEvent.click(screen.getByRole('button', { name: 'バリアフリー' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
+
+    await waitFor(() => expect(overpassCalls).toHaveLength(1), { timeout: 8000 })
+    // バリアフリークエリ（footway等）が送出される
+    expect(overpassCalls[0]).toContain('footway')
+
+    await waitFor(() => {
+      expect(screen.getByText('2件の結果を取得しました')).toBeTruthy()
+    }, { timeout: 8000 })
+
+    // (修正) バリアフリー検索の成功時は「一覧」タブではなく「検索」タブ
+    expect(tabIsCurrent('検索')).toBe(true)
+    expect(tabIsCurrent('一覧')).toBe(false)
+
+    // 検索タブの地図に歩道（線）＋縁石（点）が表示される
+    await expectBfOnSearchMap()
+
+    // (既存仕様Task 2) 検索後に地図のカメラ（中心・ズーム）は動かさない
+    expect(getMapInstance()._calls.filter((c) => c.name === 'fitBounds')).toHaveLength(0)
+  }, IT_TIMEOUT)
+
+  it('自治体モード: バリアフリー検索成功 → searchSourceが「地図」に切替され、地図が表示される', async () => {
+    renderApp()
+    overpassElements = BF_ELEMENTS
+
+    // 「自治体から探す」へ切替（searchSource='municipality'）
+    fireEvent.click(screen.getByRole('tab', { name: '自治体から探す' }))
+    await selectMunicipality('大阪府', '東大阪市', 'どの県で探す？', 'どの市区町村で探す？')
+
+    // 目的チップ「バリアフリー」でバリアフリー検索に
+    fireEvent.click(screen.getByRole('button', { name: 'バリアフリー' }))
+    fireEvent.click(screen.getByRole('button', { name: '検索する' }))
+
+    await waitFor(() => expect(overpassCalls).toHaveLength(1), { timeout: 8000 })
+    expect(overpassCalls[0]).toContain('footway')
+
+    await waitFor(() => {
+      expect(screen.getByText('2件の結果を取得しました')).toBeTruthy()
+    }, { timeout: 8000 })
+
+    // (修正) 成功 → 「検索」タブ + searchSourceが'map'に切替
+    expect(tabIsCurrent('検索')).toBe(true)
+    // 検索ボタンのラベルが地図モードの「この表示範囲で検索」になる＝searchSource 'map'
+    expect(screen.getByRole('button', { name: 'この表示範囲で検索' })).toBeTruthy()
+
+    // 新たにマウントされた検索タブの地図に結果が表示される
+    await expectBfOnSearchMap()
+
+    // (既存仕様Task 2) 検索後に地図のカメラ（中心・ズーム）は動かさない
+    expect(getMapInstance()._calls.filter((c) => c.name === 'fitBounds')).toHaveLength(0)
+  }, IT_TIMEOUT)
+
+  it('一覧タブ: バリアフリー検索成功後に一覧タブへ戻ると、BFカード・結果マップ・凡例が表示される', async () => {
+    renderApp()
+    overpassElements = BF_ELEMENTS
+
+    // 目的チップ「バリアフリー」でバリアフリー検索に
+    fireEvent.click(screen.getByRole('button', { name: 'バリアフリー' }))
+    fireEvent.click(screen.getByRole('button', { name: 'この表示範囲で検索' }))
+
+    await waitFor(() => expect(overpassCalls).toHaveLength(1), { timeout: 8000 })
+    await waitFor(() => {
+      expect(screen.getByText('2件の結果を取得しました')).toBeTruthy()
+    }, { timeout: 8000 })
+
+    // (修正) 成功時は「検索」タブへ自動切替される
+    expect(tabIsCurrent('検索')).toBe(true)
+
+    // 検索タブ・一覧タブの両方で凡例が描画される（hiddenタブはDOMに残る）
+    expect(screen.getAllByText('凡例')).toHaveLength(2)
+
+    // 一覧タブへ戻るとBFカード（名称・表示名）と件数表示が出る
+    clickTab('一覧')
+    expect(tabIsCurrent('一覧')).toBe(true)
+    expect(screen.getByText('中央通り歩道')).toBeTruthy()
+    expect(screen.getByText('縁石（未記録）')).toBeTruthy()
+    expect(screen.getByText('2件中、2件を表示')).toBeTruthy()
   }, IT_TIMEOUT)
 })

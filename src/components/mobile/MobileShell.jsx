@@ -27,11 +27,21 @@ export default function MobileShell() {
   const [detail, setDetail] = useState(null) // { result, origin }
 
   // 検索完了（loading → success/error）でタブを自動切替
+  // (修正) バリアフリー検索の成功時は「一覧」タブではなく「検索」タブ（地図）へ。
+  // searchSource が 'map' でなければ 'map' に切替する（詳細シートの showOnMap と同じやり方）。
   const prevStatusRef = useRef(state.status)
   useEffect(() => {
     const prev = prevStatusRef.current
     prevStatusRef.current = state.status
     if (prev !== 'loading' || state.status === prev) return
+
+    if (state.status === 'success' && state.resultKind === 'barrier_free') {
+      if (state.searchSource !== 'map') {
+        dispatch({ type: 'SET_SEARCH_SOURCE', payload: 'map' })
+      }
+      setTab('search')
+      return
+    }
     setTab(state.status === 'success' ? 'list' : 'search')
   }, [state.status])
 

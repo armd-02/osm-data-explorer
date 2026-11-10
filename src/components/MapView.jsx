@@ -185,7 +185,7 @@ function buildPopupElement(result) {
  * 歩道ウェイの近似中心点が青い点として表示されるのを防ぐため。
  * 施設検索（bf なし）の表示は従来どおり。
  */
-function resultsToGeoJSON(results) {
+export function resultsToGeoJSON(results) {
   return {
     type: 'FeatureCollection',
     features: (Array.isArray(results) ? results : [])

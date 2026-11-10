@@ -13,6 +13,15 @@ import { appReducer, createInitialState } from '../../../state/appReducer'
 import MobileListTab from '../MobileListTab'
 
 // 実際のOverpass正規化と同様に tags.name → 顶层name にコピーする
+// MapLibre GLはWebGLが必要でjsdomでは初期化できないためモジュール全体をモックする。
+// (修正) 一覧タブに MobileResultsMap を埋め込んだため必須。
+const mockState = vi.hoisted(() => ({ api: null }))
+vi.mock('maplibre-gl', async () => {
+  const mod = await import('../../../test/maplibreMock')
+  mockState.api = mod.createMapLibreMock()
+  return { default: mockState.api }
+})
+
 const cafeWithWeb = { type: 'node', id: 1, name: 'カフェA', tags: { amenity: 'cafe', website: 'https://cafe.example.jp', name: 'カフェA' } }
 const park = { type: 'node', id: 2, name: '中央公園', tags: { leisure: 'park', name: '中央公園' } }
 
@@ -33,7 +42,10 @@ function Harness({ preActions = [], log = [], children }) {
   )
 }
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  if (mockState.api) mockState.api.resetState()
+})
 afterEach(() => cleanup())
 
 describe('MobileListTab: カテゴリ選択=検索フォームと同期 (#44)', () => {
@@ -317,5 +329,56 @@ describe('MobileListTab: バリアフリー検索結果 (#62)', () => {
   it('0件時はバリアフリー向けのメッセージを表示する', () => {
     render(<Harness preActions={bfMobileActions([])} />)
     expect(screen.getByText(/バリアフリー関連の登録がありません/)).toBeTruthy()
+  })
+})
+
+// ===== (修正) モバイル結果マップ =====
+// 検索成功後に自動で一覧タブへ切り替わるため、一覧タブでも結果の位置を
+// マップで確認できることを検証する。
+const poiWithCoords = [
+  { type: 'node', id: 30, name: 'カフェA', lat: 34.7, lon: 135.5, tags: { amenity: 'cafe', name: 'カフェA' } },
+  { type: 'node', id: 31, name: '中央公園', lat: 34.71, lon: 135.51, tags: { leisure: 'park', name: '中央公園' } }
+]
+
+describe('MobileListTab: 結果マップが表示される（修正）', () => {
+  it('POI検索結果: 一覧上部に結果マップが表示され、結果座標が設定される', async () => {
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: poiWithCoords },
+      { type: 'SET_STATUS', payload: 'success' }
+    ]} />)
+
+    expect(screen.getByRole('img', { name: '検索結果マップ' })).toBeTruthy()
+    await waitFor(async () => {
+      const map = mockState.api._state.maps.at(-1)
+      expect(map._lastGeoJSON?.data?.features?.length).toBe(2)
+    })
+    const map = mockState.api._state.maps.at(-1)
+    expect(map._lastGeoJSON.data.features[0].geometry.coordinates).toEqual([135.5, 34.7])
+    // カメラは結果の範囲（extent）にfitBoundsされる
+    const fit = map._calls.find((c) => c.name === 'fitBounds')
+    expect(fit.args[0]).toEqual([[135.5, 34.7], [135.51, 34.71]])
+  })
+
+  it('結果がない場合は結果マップが表示されない', () => {
+    render(<Harness />)
+    expect(screen.queryByRole('img', { name: '検索結果マップ' })).toBeNull()
+    expect(mockState.api._state.maps).toHaveLength(0)
+  })
+
+  it('バリアフリー検索結果: 結果マップと凡例が表示され、線・点が設定される', async () => {
+    render(<Harness preActions={bfMobileActions()} />)
+
+    expect(screen.getByRole('img', { name: 'バリアフリー要素マップ' })).toBeTruthy()
+    expect(screen.getByText('凡例')).toBeTruthy()
+    await waitFor(async () => {
+      const map = mockState.api._state.maps.at(-1)
+      const features = map._lastGeoJSON?.data?.features || []
+      expect(features.length).toBe(2)
+      expect(features.map((f) => f.geometry.type).sort()).toEqual(['LineString', 'Point'])
+    })
+    const map = mockState.api._state.maps.at(-1)
+    // 線（135.0〜135.02, 34.0〜34.01）と点（135.1, 34.1）を含む範囲
+    const fit = map._calls.find((c) => c.name === 'fitBounds')
+    expect(fit.args[0]).toEqual([[135.0, 34.0], [135.1, 34.1]])
   })
 })

@@ -7,6 +7,8 @@ import { activeSearchOf } from '../../state/appReducer'
 import EditPanel from '../EditPanel'
 import ExportBar from '../ExportBar'
 import MobileFacilityCard from './MobileFacilityCard'
+import MobileResultsMap from './MobileResultsMap'
+import BarrierFreeLegend from '../BarrierFreeLegend'
 import AttributeCompleteness from '../AttributeCompleteness'
 import { ATTRIBUTE_LABELS } from '../../utils/statistics'
 import { barrierFreeTypeLabel, tactileStatus, lengthLabel, signalLabels } from '../../utils/barrierFreeResults'
@@ -88,6 +90,9 @@ export default function MobileListTab({ onOpenDetail }) {
 
         {hasResults && (
           <>
+            {/* (修正) 検索結果マップ: 一覧タブでも結果の位置を確認できるように */}
+            <MobileResultsMap kind="poi" />
+
             <p className="text-xs text-slate-600">
               {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
               {narrowing ? '（フィルタ適用中）' : ''}
@@ -256,6 +261,10 @@ function BarrierFreeMobileList() {
 
         {hasResults && (
           <>
+            {/* (修正) 検索結果マップ: バリアフリー要素を線・点として表示 */}
+            <MobileResultsMap kind="barrier_free" />
+            <BarrierFreeLegend />
+
             <p className="text-xs text-slate-600">
               {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
               {narrowing ? '（フィルタ適用中）' : ''}
