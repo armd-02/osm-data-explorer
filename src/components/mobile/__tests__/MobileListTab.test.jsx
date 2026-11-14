@@ -340,14 +340,21 @@ const poiWithCoords = [
   { type: 'node', id: 31, name: '中央公園', lat: 34.71, lon: 135.51, tags: { leisure: 'park', name: '中央公園' } }
 ]
 
-describe('MobileListTab: 結果マップが表示される（修正）', () => {
-  it('POI検索結果: 一覧上部に結果マップが表示され、結果座標が設定される', async () => {
+describe('MobileListTab: 結果マップ（折りたたみ式・修正）', () => {
+  it('POI検索結果: 初期は折りたたみ（地図非表示）で、「地図を表示」を押すと結果範囲にフィットして表示される', async () => {
     render(<Harness preActions={[
       { type: 'SET_RESULTS', payload: poiWithCoords },
       { type: 'SET_STATUS', payload: 'success' }
     ]} />)
 
-    expect(screen.getByRole('img', { name: '検索結果マップ' })).toBeTruthy()
+    // 初期状態は折りたたみ: 地図は描画されず、「地図を表示」ボタンが出る
+    expect(screen.queryByRole('application', { name: '検索結果マップ' })).toBeNull()
+    expect(mockState.api._state.maps).toHaveLength(0)
+    const toggle = screen.getByRole('button', { name: /地図を表示/ })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+
+    // 展開: 地図が表示され、結果座標が設定され、結果範囲にfitBoundsされる
+    fireEvent.click(toggle)
     await waitFor(async () => {
       const map = mockState.api._state.maps.at(-1)
       expect(map._lastGeoJSON?.data?.features?.length).toBe(2)
@@ -359,16 +366,35 @@ describe('MobileListTab: 結果マップが表示される（修正）', () => {
     expect(fit.args[0]).toEqual([[135.5, 34.7], [135.51, 34.71]])
   })
 
-  it('結果がない場合は結果マップが表示されない', () => {
+  it('「地図を隠す」で折りたたみに戻ると地図が非表示になり、マップが破棄される', async () => {
+    render(<Harness preActions={[
+      { type: 'SET_RESULTS', payload: poiWithCoords },
+      { type: 'SET_STATUS', payload: 'success' }
+    ]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /地図を表示/ }))
+    await waitFor(() => expect(mockState.api._state.maps).toHaveLength(1))
+    const map = mockState.api._state.maps[0]
+
+    fireEvent.click(screen.getByRole('button', { name: /地図を隠す/ }))
+    expect(screen.queryByRole('application', { name: '検索結果マップ' })).toBeNull()
+    expect(map._removed).toBe(true)
+    expect(screen.getByRole('button', { name: /地図を表示/ }).getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('結果がない場合は結果マップ（・折りたたみボタン）が表示されない', () => {
     render(<Harness />)
-    expect(screen.queryByRole('img', { name: '検索結果マップ' })).toBeNull()
+    expect(screen.queryByRole('application', { name: '検索結果マップ' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /地図を表示/ })).toBeNull()
     expect(mockState.api._state.maps).toHaveLength(0)
   })
 
-  it('バリアフリー検索結果: 結果マップと凡例が表示され、線・点が設定される', async () => {
+  it('バリアフリー検索結果: 折りたたまず常時表示。結果マップと凡例が表示され、線・点が設定される', async () => {
     render(<Harness preActions={bfMobileActions()} />)
 
-    expect(screen.getByRole('img', { name: 'バリアフリー要素マップ' })).toBeTruthy()
+    expect(screen.getByRole('application', { name: 'バリアフリー要素マップ' })).toBeTruthy()
+    // バリアフリー結果の地図は折りたたみ対象外（「地図を表示」ボタンは出ない）
+    expect(screen.queryByRole('button', { name: /地図を表示/ })).toBeNull()
     expect(screen.getByText('凡例')).toBeTruthy()
     await waitFor(async () => {
       const map = mockState.api._state.maps.at(-1)

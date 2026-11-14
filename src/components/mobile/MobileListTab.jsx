@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useApp } from '../../context/AppContext'
 import { getGroupedCategories } from '../../data/categories'
 import { applyResultFilters, hasActiveFilters } from '../../utils/resultFilters'
@@ -90,8 +90,9 @@ export default function MobileListTab({ onOpenDetail }) {
 
         {hasResults && (
           <>
-            {/* (修正) 検索結果マップ: 一覧タブでも結果の位置を確認できるように */}
-            <MobileResultsMap kind="poi" />
+            {/* (修正) 検索結果マップ: 折りたたみ式（初期は折りたたみ・非表示）。
+                見出しボタン「地図を表示／地図を隠す」で開閉する */}
+            <CollapsiblePoiMap />
 
             <p className="text-xs text-slate-600">
               {(results || []).length.toLocaleString()}件中、{filtered.length.toLocaleString()}件を表示
@@ -210,6 +211,35 @@ export default function MobileListTab({ onOpenDetail }) {
           <ExportBar variant="stacked" />
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * (修正) 折りたたみ式の検索結果マップ（POI）
+ *
+ * 初期状態は折りたたみ（地図非表示）。見出しボタン「地図を表示／地図を隠す」で
+ * 開閉する。折りたたんでいる間は MobileResultsMap をマウントしない（地図を
+ * 生成しない）。展開すると地図が新規マウントされ、結果範囲にfitBoundsされる。
+ *
+ * 折りたたみ状態はこの子コンポーネントのローカルstateに置く。MobileListTab 本体の
+ * フック構成（早期returnとuseMemoの順序）を変えずに済むため、resultKind の
+ * poi⇄barrier_free 切替によるフック数の変化で React がエラーを出すのを避ける。
+ */
+function CollapsiblePoiMap() {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-expanded={visible}
+        className="w-full min-h-[44px] px-3 py-2 flex items-center justify-between text-sm font-medium text-slate-700"
+      >
+        <span>🗺️ 検索結果マップ</span>
+        <span className="text-xs text-slate-500">{visible ? '地図を隠す' : '地図を表示'}</span>
+      </button>
+      {visible && <MobileResultsMap kind="poi" />}
     </div>
   )
 }

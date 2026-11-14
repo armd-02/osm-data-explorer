@@ -96,6 +96,35 @@ function getSelectByLabel(label) {
   return node?.querySelector('select')
 }
 
+function getInputByLabel(label) {
+  const el = screen.getByText(label)
+  let node = el
+  while (node && node.tagName !== 'DIV') node = node.parentElement
+  return node?.querySelector('input')
+}
+
+// サジェストリスト内の候補（role=option）を取得
+function getSuggestOptions() {
+  return screen.getAllByRole('option').filter(o => o.closest('[role="listbox"]'))
+}
+
+// 市区町村入力欄に名前の入力→候補クリックで選択
+async function pickMunicipality(munText) {
+  const input = await waitFor(() => {
+    const i = getInputByLabel('市区町村')
+    expect(i).toBeTruthy()
+    return i
+  }, { timeout: 3000 })
+  fireEvent.change(input, { target: { value: munText } })
+  const munOpt = await waitFor(() => {
+    const opt = getSuggestOptions().find(o => o.textContent.startsWith(munText))
+    expect(opt).toBeTruthy()
+    return opt
+  }, { timeout: 3000 })
+  fireEvent.click(munOpt)
+  return input
+}
+
 // ---- 1. TILE GRID 定義 ----
 describe('TILE_GRID 定義', () => {
   it('47都道府県すべてが配置されている', () => {
@@ -239,7 +268,7 @@ describe('PrefectureTileMap（コンポーネント）', () => {
 
 // ---- 3. MunicipalitySearch 統合 ----
 describe('MunicipalitySearch 統合（ブロック地図選択）', () => {
-  it('タイル選択 → 市区町村select出現 → 検索: BBOX検索が従来通り発行される', async () => {
+  it('タイル選択 → 市区町村入力欄出現 → 検索: BBOX検索が従来通り発行される', async () => {
     renderApp()
     fireEvent.click(screen.getByText('自治体から探す'))
 
@@ -249,17 +278,9 @@ describe('MunicipalitySearch 統合（ブロック地図選択）', () => {
     }, { timeout: 3000 })
     fireEvent.click(screen.getByRole('button', { name: '大阪府' }))
 
-    // 市区町村selectが出現（従来フローへの接続）
-    await waitFor(() => {
-      const s = getSelectByLabel('市区町村')
-      expect(s).toBeTruthy()
-      expect(s.querySelectorAll('option').length).toBeGreaterThan(1)
-    }, { timeout: 3000 })
-
-    // 高槻市を選択して検索
-    const munSelect = getSelectByLabel('市区町村')
-    const munOpt = [...munSelect.querySelectorAll('option')].find(o => o.textContent.startsWith('高槻市'))
-    fireEvent.change(munSelect, { target: { value: munOpt.value } })
+    // 市区町村入力欄が出現し、高槻市を選択（従来フローへの接続）
+    const input = await pickMunicipality('高槻市')
+    expect(input.value).toBe('高槻市')
     fireEvent.click(screen.getByText('検索する'))
 
     await waitFor(() => expect(overpassCalls.length).toBe(1), { timeout: 5000 })
@@ -277,15 +298,8 @@ describe('MunicipalitySearch 統合（ブロック地図選択）', () => {
 
     // 大阪府 → 高槻市
     fireEvent.click(screen.getByRole('button', { name: '大阪府' }))
-    await waitFor(() => {
-      const s = getSelectByLabel('市区町村')
-      expect(s).toBeTruthy()
-      expect(s.querySelectorAll('option').length).toBeGreaterThan(1)
-    }, { timeout: 3000 })
-    const munSelect = getSelectByLabel('市区町村')
-    const opt = [...munSelect.querySelectorAll('option')].find(o => o.textContent.startsWith('高槻市'))
-    fireEvent.change(munSelect, { target: { value: opt.value } })
-    await waitFor(() => expect(getSelectByLabel('市区町村').value).toBe('272078'), { timeout: 3000 })
+    await pickMunicipality('高槻市')
+    await waitFor(() => expect(getInputByLabel('市区町村').value).toBe('高槻市'), { timeout: 3000 })
 
     // (#55) 県選択でタイル地図が折りたためるため、別県を選ぶにはまず再展開する
     fireEvent.click(screen.getByRole('button', { name: /変更/ }))
@@ -293,12 +307,18 @@ describe('MunicipalitySearch 統合（ブロック地図選択）', () => {
       expect(screen.getByRole('button', { name: '奈良県' })).toBeTruthy()
     }, { timeout: 3000 })
 
-    // 奈良県タイルを選択 → 市区町村がクリアされ奈良市のオプションだけになる
+    // 奈良県タイルを選択 → 市区町村入力・選択がクリアされる
     fireEvent.click(screen.getByRole('button', { name: '奈良県' }))
     await waitFor(() => {
-      const s = getSelectByLabel('市区町村')
+      const s = getInputByLabel('市区町村')
+      expect(s).toBeTruthy()
       expect(s.value).toBe('')
-      const opts = [...s.querySelectorAll('option')].map(o => o.textContent)
+    }, { timeout: 3000 })
+
+    // フォーカスで奈良県の全自治体候補が出る（高槻市は含まれない）
+    fireEvent.focus(getInputByLabel('市区町村'))
+    await waitFor(() => {
+      const opts = getSuggestOptions().map(o => o.textContent)
       expect(opts.some(t => t.startsWith('奈良市'))).toBe(true)
       expect(opts.some(t => t.startsWith('高槻市'))).toBe(false)
     }, { timeout: 3000 })
@@ -318,14 +338,12 @@ describe('MunicipalitySearch 統合（ブロック地図選択）', () => {
     // 他県タイルは未選択
     expect(screen.getByRole('button', { name: '奈良県' }).getAttribute('aria-pressed')).toBe('false')
 
-    // 従来どおり市区町村selectも同期されている
-    const munSelect = await waitFor(() => {
-      const s = getSelectByLabel('市区町村')
+    // 従来どおり市区町村入力欄も同期されている（高槻市名が表示される）
+    await waitFor(() => {
+      const s = getInputByLabel('市区町村')
       expect(s).toBeTruthy()
-      expect(s.value).toBe('272078')
-      return s
+      expect(s.value).toBe('高槻市')
     }, { timeout: 5000 })
-    expect(munSelect).toBeTruthy()
   }, 15000)
 
   it('キーボード操作でタイル選択 → 市区町村selectが出現する', async () => {
@@ -339,10 +357,10 @@ describe('MunicipalitySearch 統合（ブロック地図選択）', () => {
     // Enter キーで選択
     fireEvent.keyDown(screen.getByRole('button', { name: '大阪府' }), { key: 'Enter' })
 
+    // 市区町村入力欄が出現する
     await waitFor(() => {
-      const s = getSelectByLabel('市区町村')
+      const s = getInputByLabel('市区町村')
       expect(s).toBeTruthy()
-      expect(s.querySelectorAll('option').length).toBeGreaterThan(1)
     }, { timeout: 3000 })
   }, 15000)
 })

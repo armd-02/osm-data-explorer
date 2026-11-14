@@ -113,6 +113,18 @@ const getSelectByLabel = (label) => {
   return node?.querySelector('select')
 }
 
+// ラベルベースの市区町村テキスト入力取得
+const getInputByLabel = (label) => {
+  const el = screen.getByText(label)
+  let node = el
+  while (node && node.tagName !== 'DIV') node = node.parentElement
+  return node?.querySelector('input')
+}
+
+// サジェストリスト内の候補（role=option）を取得
+const getSuggestOptions = () =>
+  screen.getAllByRole('option').filter(o => o.closest('[role="listbox"]'))
+
 /**
  * (#44) 目的チップ→カテゴリチップ でカテゴリを選択する
  * 例: selectCategoryChip('カフェ') → 「食べる」をタップ → 「カフェ」をタップ
@@ -157,7 +169,7 @@ function renderApp(query = '') {
 
 const IT_TIMEOUT = 15000 // waitFor(5000ms)に余裕を持たせる
 
-// 都道府県→市区町村を選択（selectがレンダされるまで待つ）
+// 都道府県→市区町村を選択（テキスト入力＋サジェスト）
 async function selectMunicipality(prefText, munText) {
   await waitFor(() => {
     expect(screen.getByText('都道府県')).toBeTruthy()
@@ -171,16 +183,19 @@ async function selectMunicipality(prefText, munText) {
   expect(prefOpt).toBeTruthy()
   fireEvent.change(prefSelect, { target: { value: prefOpt.value } })
 
-  // 市区町村selectの出現を待ってから選択
-  await waitFor(() => {
-    const s = getSelectByLabel('市区町村')
-    expect(s).toBeTruthy()
-    expect(s.querySelectorAll('option').length).toBeGreaterThan(1)
+  // 市区町村入力欄の出現を待ってから名前の入力と候補クリック
+  const input = await waitFor(() => {
+    const i = getInputByLabel('市区町村')
+    expect(i).toBeTruthy()
+    return i
   }, { timeout: 3000 })
-  const munSelect = getSelectByLabel('市区町村')
-  const munOpt = [...munSelect.querySelectorAll('option')].find(o => o.textContent.startsWith(munText))
-  expect(munOpt).toBeTruthy()
-  fireEvent.change(munSelect, { target: { value: munOpt.value } })
+  fireEvent.change(input, { target: { value: munText } })
+  const munOpt = await waitFor(() => {
+    const opt = getSuggestOptions().find(o => o.textContent.startsWith(munText))
+    expect(opt).toBeTruthy()
+    return opt
+  }, { timeout: 3000 })
+  fireEvent.click(munOpt)
 }
 
 describe('自治体モード E2E（カテゴリ反映の検証）', () => {
@@ -266,13 +281,13 @@ describe('自治体モード E2E（カテゴリ反映の検証）', () => {
     const munTab = screen.getByText('自治体から探す')
     expect(munTab.closest('button')?.className).toContain('bg-white')
 
-    // 市区町村selectが「高槻市」に復元される（stale closure対策の確認）
+    // 市区町村入力欄が「高槻市」に復元される（stale closure対策の確認）
     await waitFor(() => {
       const prefSelect = getSelectByLabel('都道府県')
       expect(prefSelect.value).toBe('27')
-      const munSelect = getSelectByLabel('市区町村')
-      expect(munSelect).toBeTruthy()
-      expect(munSelect.value).toBe('272078')
+      const input = getInputByLabel('市区町村')
+      expect(input).toBeTruthy()
+      expect(input.value).toBe('高槻市')
     }, { timeout: 5000 })
 
     // カテゴリが「カフェ」に復元される（選択中ボックス表示）

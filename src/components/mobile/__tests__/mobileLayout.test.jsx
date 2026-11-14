@@ -129,6 +129,19 @@ function getSelectByLabel(label) {
   return node?.querySelector('select')
 }
 
+// labelテキストから対応する市区町村テキスト入力欄を取得
+function getInputByLabel(label) {
+  const el = screen.getByText(label)
+  let node = el
+  while (node && node.tagName !== 'DIV') node = node.parentElement
+  return node?.querySelector('input')
+}
+
+// サジェストリスト内の候補（role=option）を取得
+function getSuggestOptions() {
+  return screen.getAllByRole('option').filter((o) => o.closest('[role="listbox"]'))
+}
+
 /**
  * (#44) 目的チップ→カテゴリチップ でカテゴリを選択する
  * 例: selectCategoryChip('カフェ') → 「食べる」をタップ → 「カフェ」をタップ
@@ -155,15 +168,19 @@ async function selectMunicipality(prefText, munText, prefLabel = '都道府県',
   expect(prefOpt).toBeTruthy()
   fireEvent.change(prefSelect, { target: { value: prefOpt.value } })
 
-  await waitFor(() => {
-    const s = getSelectByLabel(munLabel)
-    expect(s).toBeTruthy()
-    expect(s.querySelectorAll('option').length).toBeGreaterThan(1)
+  // 市区町村入力欄の出現を待ってから名前の入力と候補クリック
+  const input = await waitFor(() => {
+    const i = getInputByLabel(munLabel)
+    expect(i).toBeTruthy()
+    return i
   }, { timeout: 3000 })
-  const munSelect = getSelectByLabel(munLabel)
-  const munOpt = [...munSelect.querySelectorAll('option')].find((o) => o.textContent.startsWith(munText))
-  expect(munOpt).toBeTruthy()
-  fireEvent.change(munSelect, { target: { value: munOpt.value } })
+  fireEvent.change(input, { target: { value: munText } })
+  const munOpt = await waitFor(() => {
+    const opt = getSuggestOptions().find((o) => o.textContent.startsWith(munText))
+    expect(opt).toBeTruthy()
+    return opt
+  }, { timeout: 3000 })
+  fireEvent.click(munOpt)
 }
 
 beforeEach(() => {

@@ -7,7 +7,7 @@ import PrefectureTileMap from './PrefectureTileMap'
 
 /**
  * (#44 生活者目線UI)
- *   - 都道府県・市区町村はセレクトで選択
+ *   - 都道府県はセレクト（タイルグリッド）、市区町村はテキスト入力＋サジェストで選択
  *   - カテゴリは目的アイコンチップ（CategoryPicker）で選ぶ（PC・モバイル共通）
  *   - ラベルを生活者の言葉に（「どの県で探す？」「何を探す？」）
  *   - OSMデータ補完性の注意を分かりやすい表現で表示
@@ -15,6 +15,8 @@ import PrefectureTileMap from './PrefectureTileMap'
 export default function MunicipalitySearch({ variant = 'pc' }) {
   const isMobile = variant === 'mobile'
   const prefSelectId = `pref-select-${variant}`
+  const munInputId = `mun-input-${variant}`
+  const suggestListId = `mun-suggest-${variant}`
 
 /**
  * (#44) 自治体別施設検索
@@ -31,9 +33,13 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
   const [munCode, setMunCode] = useState('')
   // (#55) 都道府県選択ブロックの折りたたみ: 初期は開いた状態（ページを開いたら開く）
   const [prefOpen, setPrefOpen] = useState(true)
-  // 折りたたみ直後に市区町村selectへフォーカスする_pendingフラグ（selectがレンダされてから実行）
+  // 折りたたみ直後に市区町村入力欄へフォーカスするpendingフラグ（入力欄がレンダされてから実行）
   const [pendingMunFocus, setPendingMunFocus] = useState(false)
-  const munSelectRef = useRef(null)
+  const munInputRef = useRef(null)
+  // 市区町村テキスト入力＋サジェストの状態
+  const [munInput, setMunInput] = useState('')
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [activeIdx, setActiveIdx] = useState(null)
   // (#47) カテゴリ・キーワードは親stateに上げ、検索ボタンと共有する
   const { category, keyword, cuisine, purpose } = state.municipalitySearch || { category: '', keyword: '', cuisine: '', purpose: '' }
 
@@ -70,6 +76,10 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
     if (!mun || mun.code === munCode) return
     setPrefCode(mun.prefCode)
     setMunCode(mun.code)
+    // 入力欄に自治体名を同期（外部セット時の入力表示・サジェスト状態の整理）
+    setMunInput(mun.displayName || mun.name)
+    setSuggestOpen(false)
+    setActiveIdx(null)
     // (#46) 表示名・BBOXが未設定ならデータから補完
     if (!state.selectedMunicipality.name || !state.selectedMunicipality.bbox) {
       dispatch({ type: 'SET_MUNICIPALITY', payload: {
@@ -110,6 +120,21 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
     return data.municipalities.find(m => m.code === munCode) || null
   }, [data, munCode])
 
+  // 自治体の正式名（displayName優先）と候補表示ラベル（区は接尾辞付き）
+  const plainName = (m) => m.displayName || m.name
+  const munDisplayLabel = (m) => plainName(m) + (m.adminLevel === 8 ? '（区）' : '')
+
+  // サジェスト候補: 選択県内で名前に部分一致する自治体（空入力なら全件）
+  const candidates = useMemo(() => {
+    if (!munList.length) return []
+    const q = munInput.trim().toLowerCase()
+    if (!q) return munList
+    return munList.filter(m =>
+      m.name.toLowerCase().includes(q) ||
+      (m.displayName || '').toLowerCase().includes(q)
+    )
+  }, [munList, munInput])
+
   // (#55) 折りたたみ表示用の都道府県名
   const selectedPrefName = useMemo(() => {
     if (!data || !prefCode) return ''
@@ -126,6 +151,9 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
   const handlePrefChange = (e) => {
     setPrefCode(e.target.value)
     setMunCode('')
+    setMunInput('')
+    setSuggestOpen(false)
+    setActiveIdx(null)
     dispatch({ type: 'SET_MUNICIPALITY', payload: null })
     if (e.target.value) collapsePrefecture()
   }
@@ -134,32 +162,85 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
   const handlePrefSelect = (code) => {
     setPrefCode(code)
     setMunCode('')
+    setMunInput('')
+    setSuggestOpen(false)
+    setActiveIdx(null)
     dispatch({ type: 'SET_MUNICIPALITY', payload: null })
     collapsePrefecture()
   }
 
-  // (#55) 折りたたみ後に市区町村selectがレンダされたらフォーカスを移動
+  // (#55) 折りたたみ後に市区町村入力欄がレンダされたらフォーカスを移動
   useEffect(() => {
     if (!pendingMunFocus) return
-    if (munSelectRef.current) munSelectRef.current.focus()
+    if (munInputRef.current) munInputRef.current.focus()
     setPendingMunFocus(false)
   }, [pendingMunFocus, prefCode])
 
-  // (#47) 市区町村選択を親stateに同期（検索ボタンのdisable判定・BBOX共有用）
-  const handleMunChange = (e) => {
-    const code = e.target.value
-    setMunCode(code)
-    if (!code) {
+  // 市区町村の選択確定: 旧 select の onChange と同一の親state更新
+  // (#47) 選択を親stateに同期（検索ボタンのdisable判定・BBOX共有用）
+  const selectMunicipality = (mun) => {
+    setMunCode(mun.code)
+    setMunInput(plainName(mun))
+    setSuggestOpen(false)
+    setActiveIdx(null)
+    dispatch({ type: 'SET_MUNICIPALITY', payload: {
+      code: mun.code,
+      name: mun.displayName || mun.name,
+      bbox: mun.bbox
+    }})
+  }
+
+  // 入力変更: サジェストを絞り込み表示。選択済み名と一致しない場合は選択をクリア
+  const handleMunInputChange = (e) => {
+    const value = e.target.value
+    setMunInput(value)
+    setSuggestOpen(true)
+    if (munCode && selectedMun && value !== plainName(selectedMun)) {
+      setMunCode('')
       dispatch({ type: 'SET_MUNICIPALITY', payload: null })
-      return
     }
-    const mun = data.municipalities.find(m => m.code === code)
-    if (mun) {
-      dispatch({ type: 'SET_MUNICIPALITY', payload: {
-        code: mun.code,
-        name: mun.displayName || mun.name,
-        bbox: mun.bbox
-      }})
+  }
+
+  const handleMunInputFocus = () => {
+    setSuggestOpen(true)
+  }
+
+  const handleMunInputBlur = () => {
+    setSuggestOpen(false)
+    setActiveIdx(null)
+  }
+
+  // キーボード: ↑↓で候補移動（ラップ）・Enterで確定・Escapeで閉じる
+  const handleMunInputKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (!suggestOpen) {
+        setSuggestOpen(true)
+        setActiveIdx(0)
+        return
+      }
+      if (candidates.length) {
+        setActiveIdx((activeIdx == null ? -1 : activeIdx + 1) % candidates.length)
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!suggestOpen) {
+        setSuggestOpen(true)
+        setActiveIdx(candidates.length ? candidates.length - 1 : 0)
+        return
+      }
+      if (candidates.length) {
+        setActiveIdx((activeIdx == null ? 1 : activeIdx - 1 + candidates.length) % candidates.length)
+      }
+    } else if (e.key === 'Enter') {
+      if (suggestOpen && activeIdx != null && candidates[activeIdx]) {
+        e.preventDefault()
+        selectMunicipality(candidates[activeIdx])
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setSuggestOpen(false)
+      setActiveIdx(null)
     }
   }
 
@@ -214,24 +295,58 @@ export default function MunicipalitySearch({ variant = 'pc' }) {
         </select>
       </div>
 
-      {/* 市区町村選択 */}
+      {/* 市区町村選択: テキスト入力＋サジェスト */}
       {prefCode && (
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの市区町村で探す？' : '市区町村'}</label>
-          <select
-            ref={munSelectRef}
-            value={munCode}
-            onChange={handleMunChange}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          >
-            <option value="">選択してください</option>
-            {munList.map(m => (
-              <option key={m.code} value={m.code}>
-                {m.displayName || m.name}
-                {m.adminLevel === 8 ? '（区）' : ''}
-              </option>
-            ))}
-          </select>
+          <label htmlFor={munInputId} className="block text-xs font-medium text-slate-600 mb-1">{isMobile ? 'どの市区町村で探す？' : '市区町村'}</label>
+          <div className="relative">
+            <input
+              ref={munInputRef}
+              id={munInputId}
+              type="text"
+              value={munInput}
+              onChange={handleMunInputChange}
+              onFocus={handleMunInputFocus}
+              onBlur={handleMunInputBlur}
+              onKeyDown={handleMunInputKeyDown}
+              placeholder="例: 高槻市"
+              role="combobox"
+              aria-expanded={suggestOpen}
+              aria-controls={suggestListId}
+              aria-activedescendant={suggestOpen && activeIdx != null ? `${suggestListId}-opt-${activeIdx}` : undefined}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            {suggestOpen && (
+              <ul
+                id={suggestListId}
+                role="listbox"
+                aria-label="市区町村候補"
+                className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-slate-300 rounded-lg shadow-sm py-1"
+              >
+                {candidates.length === 0 ? (
+                  <li className="px-3 py-2 text-sm text-slate-400">該当する市区町村がありません</li>
+                ) : (
+                  candidates.map((m, i) => (
+                    <li key={m.code}>
+                      <button
+                        type="button"
+                        id={`${suggestListId}-opt-${i}`}
+                        role="option"
+                        aria-selected={i === activeIdx}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectMunicipality(m)}
+                        className={i === activeIdx
+                          ? 'w-full text-left px-3 py-2 text-sm bg-primary-50 text-primary-800'
+                          : 'w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50'}
+                      >
+                        {munDisplayLabel(m)}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
+          </div>
         </div>
       )}
 

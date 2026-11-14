@@ -91,7 +91,7 @@ function renderApp(query = '') {
   render(<App />)
 }
 
-// 市区町村selectを取得（ラベル→親div内のselect）
+// selectを取得（ラベル→親div内のselect）
 const getSelectByLabel = (label) => {
   const el = screen.getByText(label)
   let node = el
@@ -99,7 +99,19 @@ const getSelectByLabel = (label) => {
   return node?.querySelector('select')
 }
 
-// 都道府県→市区町村を選択
+// 市区町村テキスト入力欄を取得（ラベル→親div内のinput）
+const getInputByLabel = (label) => {
+  const el = screen.getByText(label)
+  let node = el
+  while (node && node.tagName !== 'DIV') node = node.parentElement
+  return node?.querySelector('input')
+}
+
+// サジェストリスト内の候補（role=option）を取得
+const getSuggestOptions = () =>
+  screen.getAllByRole('option').filter(o => o.closest('[role="listbox"]'))
+
+// 都道府県→市区町村を選択（テキスト入力＋サジェスト）
 async function selectMunicipality(prefText, munText) {
   await waitFor(() => {
     expect(screen.getByText('都道府県')).toBeTruthy()
@@ -109,15 +121,19 @@ async function selectMunicipality(prefText, munText) {
   expect(prefOpt).toBeTruthy()
   fireEvent.change(prefSelect, { target: { value: prefOpt.value } })
 
-  await waitFor(() => {
-    const s = getSelectByLabel('市区町村')
-    expect(s).toBeTruthy()
-    expect(s.querySelectorAll('option').length).toBeGreaterThan(1)
+  // 市区町村入力欄の出現を待ってから名前の入力と候補クリック
+  const input = await waitFor(() => {
+    const i = getInputByLabel('市区町村')
+    expect(i).toBeTruthy()
+    return i
   }, { timeout: 3000 })
-  const munSelect = getSelectByLabel('市区町村')
-  const munOpt = [...munSelect.querySelectorAll('option')].find(o => o.textContent.startsWith(munText))
-  expect(munOpt).toBeTruthy()
-  fireEvent.change(munSelect, { target: { value: munOpt.value } })
+  fireEvent.change(input, { target: { value: munText } })
+  const munOpt = await waitFor(() => {
+    const opt = getSuggestOptions().find(o => o.textContent.startsWith(munText))
+    expect(opt).toBeTruthy()
+    return opt
+  }, { timeout: 3000 })
+  fireEvent.click(munOpt)
 }
 
 // ハンバーガーメニューを開く

@@ -5,7 +5,7 @@
  * 要件:
  * 1. ページを開いたときは、折りたたまず開いた状態（タイルグリッド表示）
  * 2. 都道府県を選択したら、閉じる（要約ボタン表示）
- * 3. 閉じたあと、市町村を選ぶセレクトボックスにフォーカスを移動する
+ * 3. 閉じたあと、市町村を入力するテキスト欄にフォーカスを移動する
  *
  * 補足: 閉じた状態から要約ボタンで再展開できること（折りたたみ式の基本動作）も検証する。
  * PC・モバイル両variantで検証する。
@@ -67,9 +67,9 @@ async function waitLoaded() {
   }, { timeout: 3000 })
 }
 
-// 市区町村selectを取得（都道府県selectは id="pref-select-{variant}" なので除外）
-function getMunSelect(container, variant = 'pc') {
-  return [...container.querySelectorAll('select')].find(s => s.id !== `pref-select-${variant}`)
+// 市区町村テキスト入力欄を取得（id="mun-input-{variant}"）
+function getMunInput(container, variant = 'pc') {
+  return container.querySelector(`#mun-input-${variant}`)
 }
 
 describe('(#55) 都道府県選択の折りたたみ（PC variant）', () => {
@@ -100,14 +100,14 @@ describe('(#55) 都道府県選択の折りたたみ（PC variant）', () => {
     await waitFor(() => expect(container.querySelector('svg')).toBeNull(), { timeout: 3000 })
   })
 
-  it('要件3: 閉じたあと、市区町村selectにフォーカスが移動する', async () => {
+  it('要件3: 閉じたあと、市区町村入力欄にフォーカスが移動する', async () => {
     const { container } = renderSearch()
     await waitLoaded()
     fireEvent.click(screen.getByRole('button', { name: '大阪府' }))
     await waitFor(() => {
-      const munSelect = getMunSelect(container)
-      expect(munSelect).toBeTruthy()
-      expect(document.activeElement).toBe(munSelect)
+      const munInput = getMunInput(container)
+      expect(munInput).toBeTruthy()
+      expect(document.activeElement).toBe(munInput)
     }, { timeout: 3000 })
   })
 
@@ -122,7 +122,7 @@ describe('(#55) 都道府県選択の折りたたみ（PC variant）', () => {
 })
 
 describe('(#55) 都道府県選択の折りたたみ（モバイル variant）', () => {
-  it('開いた状態で表示→タイル選択で閉じる→市区町村selectにフォーカス', async () => {
+  it('開いた状態で表示→タイル選択で閉じる→市区町村入力欄にフォーカス', async () => {
     const { container } = renderSearch('mobile')
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '大阪府' })).toBeTruthy()
@@ -131,9 +131,9 @@ describe('(#55) 都道府県選択の折りたたみ（モバイル variant）',
     fireEvent.click(screen.getByRole('button', { name: '大阪府' }))
     await waitFor(() => {
       expect(container.querySelector('svg')).toBeNull()
-      const munSelect = getMunSelect(container, 'mobile')
-      expect(munSelect).toBeTruthy()
-      expect(document.activeElement).toBe(munSelect)
+      const munInput = getMunInput(container, 'mobile')
+      expect(munInput).toBeTruthy()
+      expect(document.activeElement).toBe(munInput)
     }, { timeout: 3000 })
   })
 })

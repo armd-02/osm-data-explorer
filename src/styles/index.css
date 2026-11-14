@@ -13,6 +13,33 @@
   --color-primary-900: #1e3a8a;
 }
 
+/*
+ * (#61) プル・トゥ・リフレッシュ・オーバースクロール連鎖の防止:
+ * モバイルブラウザでは、ページ上部で下方向に引っ張るとブラウザが
+ * ページをリロードする（プル・トゥ・リフレッシュ）。検索結果や入力内容が
+ * 消えるため、html/body に overscroll-behavior: none を指定して
+ * ドキュメントでのオーバースクロール連鎖（縦・横両軸）を遮断する。
+ * これにより Chrome 等のプル・トゥ・リフレッシュも止まる。
+ * iOS では CSS だけでは止められない既知の問題がある（WebKit bug 275947）ため、
+ * src/main.jsx で JS ガード（utils/pullToRefreshGuard.js）も併用する。
+ */
+/*
+ * ページ全体ズーム（ピンチイン・ピンチアウト）の防止:
+ * モバイルブラウザでは、地図以外のエリア（ヘッダー・検索フォーム・結果一覧・
+ * 下部ナビなど）で2本指ピンチすると、ブラウザがページ全体を拡大・縮小し
+ * レイアウトが崩れる。地図キャンバスは MapLibre が touch-action: pan-x pan-y
+ * でピンチを JS 側に予約しているため、html/body にも同様に
+ * touch-action: pan-x pan-y を指定すると、ページ全体のネイティブピンチズーム
+ * （およびダブルタップズーム）が無効化され、1本指のパンスクロールは維持される。
+ * touch-action をサポートしないブラウザ（iOS 12以前など）では、
+ * src/main.jsx の JS ガード（utils/pageZoomGuard.js）が補完する。
+ */
+html,
+body {
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+}
+
 /* 都道府県ブロック地図（タイルグリッド） */
 .pref-tile {
   cursor: pointer;
